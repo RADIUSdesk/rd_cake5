@@ -1,0 +1,497 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * CakePHP(tm) : Rapid Development Framework (https://cakephp.org)
+ * Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
+ *
+ * Licensed under The MIT License
+ * For full copyright and license information, please see the LICENSE.txt
+ * Redistributions of files must retain the above copyright notice.
+ *
+ * @copyright     Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
+ * @link          https://cakephp.org CakePHP(tm) Project
+ * @since         3.5.0
+ * @license       https://www.opensource.org/licenses/mit-license.php MIT License
+ */
+namespace Cake\Console;
+
+use Cake\Command\VersionCommand;
+use Cake\Console\Command\HelpCommand;
+use Cake\Console\Exception\MissingOptionException;
+use Cake\Console\Exception\StopException;
+use Cake\Core\ConsoleApplicationInterface;
+use Cake\Core\ConsoleHelpHeaderProviderInterface;
+use Cake\Core\ContainerApplicationInterface;
+use Cake\Core\PluginApplicationInterface;
+use Cake\Event\EventDispatcherInterface;
+use Cake\Event\EventDispatcherTrait;
+use Cake\Event\EventListenerInterface;
+use Cake\Event\EventManager;
+use Cake\Event\EventManagerInterface;
+use Cake\Routing\Router;
+use Cake\Routing\RoutingApplicationInterface;
+use Cake\Utility\Inflector;
+use Throwable;
+
+/**
+ * Run CLI commands for the provided application.
+ */
+class CommandRunner implements EventDispatcherInterface
+{
+    use EventDispatcherTrait;
+
+    /**
+     * The application console commands are being run for.
+     *
+     * @var \Cake\Core\ConsoleApplicationInterface
+     */
+    protected ConsoleApplicationInterface $app;
+
+    /**
+     * The application console commands are being run for.
+     *
+     * @var \Cake\Console\CommandFactoryInterface|null
+     */
+    protected ?CommandFactoryInterface $factory = null;
+
+    /**
+     * The root command name. Defaults to `cake`.
+     *
+     * @var string
+     */
+    protected string $root;
+
+    /**
+     * Alias mappings.
+     *
+     * @var array<string, string>
+     */
+    protected array $aliases = [
+        '--version' => 'version',
+        '--help' => 'help',
+        '-h' => 'help',
+        '-v' => 'help',
+        '--verbose' => 'help',
+    ];
+
+    /**
+     * Constructor
+     *
+     * @param \Cake\Core\ConsoleApplicationInterface $app The application to run CLI commands for.
+     * @param string $root The root command name to be removed from argv.
+     * @param \Cake\Console\CommandFactoryInterface|null $factory Command factory instance.
+     */
+    public function __construct(
+        ConsoleApplicationInterface $app,
+        string $root = 'cake',
+        ?CommandFactoryInterface $factory = null,
+    ) {
+        $this->app = $app;
+        $this->root = $root;
+        $this->factory = $factory;
+    }
+
+    /**
+     * Replace the entire alias map for a runner.
+     *
+     * Aliases allow you to define alternate names for commands
+     * in the collection. This can be useful to add top level switches
+     * like `--version` or `-h`
+     *
+     * ### Usage
+     *
+     * ```
+     * $runner->setAliases(['--version' => 'version']);
+     * ```
+     *
+     * @param array<string, string> $aliases The map of aliases to replace.
+     * @return $this
+     */
+    public function setAliases(array $aliases)
+    {
+        $this->aliases = $aliases;
+
+        return $this;
+    }
+
+    /**
+     * Run the command contained in $argv.
+     *
+     * Use the application to do the following:
+     *
+     * - Bootstrap the application
+     * - Create the CommandCollection using the console() hook on the application.
+     * - Trigger the `Console.buildCommands` event of auto-wiring plugins.
+     * - Run the requested command.
+     *
+     * @param array $argv The arguments from the CLI environment.
+     * @param \Cake\Console\ConsoleIo|null $io The ConsoleIo instance. Used primarily for testing.
+     * @return int The exit code of the command.
+     */
+    public function run(array $argv, ?ConsoleIo $io = null): int
+    {
+        assert($argv !== [], 'Cannot run any commands. No arguments received.');
+
+        $this->bootstrap();
+
+        $commands = new CommandCollection([
+            'help' => HelpCommand::class,
+        ]);
+        if (class_exists(VersionCommand::class)) {
+            $commands->add('version', VersionCommand::class);
+        }
+        $commands = $this->app->console($commands);
+
+        if ($this->app instanceof PluginApplicationInterface) {
+            $commands = $this->app->pluginConsole($commands);
+        }
+        $this->dispatchEvent('Console.buildCommands', ['commands' => $commands]);
+        $this->loadRoutes();
+
+        // Remove the root executable segment
+        array_shift($argv);
+
+        $io = $io ?: new ConsoleIo();
+
+        /** @var array{string|null, array} $resolved */
+        $resolved = $this->longestCommandName($commands, $argv);
+        [$name, $argv] = $resolved;
+
+        // If -v/--verbose is used as command, preserve it as flag for help command
+        if ($name === '-v' || $name === '--verbose') {
+            $argv = array_merge([$name], $argv);
+            $name = 'help';
+        }
+
+        // Check if this is a command prefix (e.g., "cache" has subcommands like "cache clear")
+        // Show help for that prefix instead of running the base command
+        if ($name !== null && !$commands->has($name) && $this->hasCommandsWithPrefix($commands, $name)) {
+            $argv = [$name];
+            $name = 'help';
+        }
+
+        try {
+            $name = $this->resolveName($commands, $io, $name);
+        } catch (MissingOptionException $e) {
+            $io->error($e->getFullMessage());
+
+            return CommandInterface::CODE_ERROR;
+        }
+
+        $command = $this->getCommand($io, $commands, $name);
+
+        // If the matched command also has sibling subcommands (e.g. `i18n` exists alongside
+        // `i18n init` / `i18n extract`), an unknown next token is almost always a typo for a
+        // subcommand. Reject it instead of letting it fall through as a positional argument.
+        //
+        // Commands that declare their own positional arguments are exempt: there the next token
+        // is a legitimate argument (e.g. `bake template Articles` alongside `bake template all`),
+        // not a mistyped subcommand, and only the command's own parser can tell the two apart.
+        if (
+            isset($argv[0])
+            && !str_starts_with($argv[0], '-')
+            && $this->hasCommandsWithPrefix($commands, $name)
+            && $this->isArgumentlessCommand($command)
+        ) {
+            $candidate = $name . ' ' . $argv[0];
+            if (!$commands->has($candidate)) {
+                $io->error($this->unknownSubcommandMessage($commands, $name, $argv[0]));
+
+                return CommandInterface::CODE_ERROR;
+            }
+        }
+
+        $result = $this->runCommand($command, $argv, $io);
+
+        if ($result === null) {
+            return CommandInterface::CODE_SUCCESS;
+        }
+        if ($result >= 0 && $result <= 255) {
+            return $result;
+        }
+
+        return CommandInterface::CODE_ERROR;
+    }
+
+    /**
+     * Application bootstrap wrapper.
+     *
+     * Calls the application's `bootstrap()` hook. After the application the
+     * plugins are bootstrapped and events are registered.
+     *
+     * @return void
+     */
+    protected function bootstrap(): void
+    {
+        $this->app->bootstrap();
+        if ($this->app instanceof PluginApplicationInterface) {
+            $this->app->pluginBootstrap();
+        }
+    }
+
+    /**
+     * Get the application's event manager or the global one.
+     *
+     * @return \Cake\Event\EventManagerInterface
+     */
+    public function getEventManager(): EventManagerInterface
+    {
+        if ($this->app instanceof PluginApplicationInterface) {
+            return $this->app->getEventManager();
+        }
+
+        return EventManager::instance();
+    }
+
+    /**
+     * Get/set the application's event manager.
+     *
+     * @param \Cake\Event\EventManagerInterface $eventManager The event manager to set.
+     * @return $this
+     */
+    public function setEventManager(EventManagerInterface $eventManager)
+    {
+        if ($this->app instanceof EventDispatcherInterface) {
+            $this->app->setEventManager($eventManager);
+        }
+
+        return $this;
+    }
+
+    /**
+     * Get the shell instance for a given command name
+     *
+     * @param \Cake\Console\ConsoleIo $io The IO wrapper for the created shell class.
+     * @param \Cake\Console\CommandCollection $commands The command collection to find the shell in.
+     * @param string $name The command name to find
+     * @return \Cake\Console\CommandInterface
+     */
+    protected function getCommand(ConsoleIo $io, CommandCollection $commands, string $name): CommandInterface
+    {
+        $instance = $commands->get($name);
+        if (is_string($instance)) {
+            $instance = $this->createCommand($instance);
+        }
+
+        if ($instance instanceof HelpCommand && $this->app instanceof ConsoleHelpHeaderProviderInterface) {
+            $instance->setHeaderLine($this->app->getConsoleHelpHeader());
+        }
+
+        $instance->setName("{$this->root} {$name}");
+
+        if ($instance instanceof CommandCollectionAwareInterface) {
+            $instance->setCommandCollection($commands);
+        }
+
+        return $instance;
+    }
+
+    /**
+     * Build the longest command name that exists in the collection
+     *
+     * Build the longest command name that matches a
+     * defined command. This will traverse a maximum of 3 tokens.
+     *
+     * @param \Cake\Console\CommandCollection $commands The command collection to check.
+     * @param array $argv The CLI arguments.
+     * @return array An array of the resolved name and modified argv.
+     */
+    protected function longestCommandName(CommandCollection $commands, array $argv): array
+    {
+        for ($i = 3; $i > 1; $i--) {
+            $parts = array_slice($argv, 0, $i);
+            $name = implode(' ', $parts);
+            if ($commands->has($name)) {
+                return [$name, array_slice($argv, $i)];
+            }
+
+            $firstChar = $name[0] ?? '';
+            if ($firstChar === strtoupper($firstChar) && str_contains($name, '.')) {
+                $underName = Inflector::underscore($name);
+                if ($commands->has($underName)) {
+                    return [$underName, array_slice($argv, $i)];
+                }
+            }
+        }
+        $name = array_shift($argv);
+
+        return [$name, $argv];
+    }
+
+    /**
+     * Resolve the command name into a name that exists in the collection.
+     *
+     * Apply backwards compatible inflections and aliases.
+     * Will step forward up to 3 tokens in $argv to generate
+     * a command name in the CommandCollection. More specific
+     * command names take precedence over less specific ones.
+     *
+     * @param \Cake\Console\CommandCollection $commands The command collection to check.
+     * @param \Cake\Console\ConsoleIo $io ConsoleIo object for errors.
+     * @param string|null $name The name from the CLI args.
+     * @return string The resolved name.
+     * @throws \Cake\Console\Exception\MissingOptionException
+     */
+    protected function resolveName(CommandCollection $commands, ConsoleIo $io, ?string $name): string
+    {
+        if (!$name) {
+            $name = 'help';
+        }
+        $name = $this->aliases[$name] ?? $name;
+        if (!$commands->has($name)) {
+            $name = Inflector::underscore($name);
+        }
+        if (!$commands->has($name)) {
+            throw new MissingOptionException(
+                "Unknown command `{$this->root} {$name}`. " .
+                "Run `{$this->root} --help` to get the list of commands.",
+                $name,
+                $commands->keys(),
+            );
+        }
+
+        return $name;
+    }
+
+    /**
+     * Check if there are commands that start with the given prefix.
+     *
+     * @param \Cake\Console\CommandCollection $commands The command collection.
+     * @param string $prefix The prefix to check.
+     * @return bool True if commands with this prefix exist.
+     */
+    protected function hasCommandsWithPrefix(CommandCollection $commands, string $prefix): bool
+    {
+        foreach ($commands->keys() as $name) {
+            if (str_starts_with($name, $prefix . ' ')) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Check whether a command is known to accept no positional arguments.
+     *
+     * Only returns true when the command's option parser can be inspected and declares zero
+     * arguments. When the parser cannot be determined, it errs on the side of caution and
+     * returns false, so a potentially valid command is run rather than rejected by the
+     * sibling-subcommand check as a mistyped subcommand.
+     *
+     * @param \Cake\Console\CommandInterface $command The resolved command instance to inspect.
+     * @return bool
+     */
+    protected function isArgumentlessCommand(CommandInterface $command): bool
+    {
+        if (!$command instanceof BaseCommand) {
+            return false;
+        }
+
+        try {
+            $parser = $command->getOptionParser();
+        } catch (Throwable) {
+            return false;
+        }
+
+        return $parser->arguments() === [];
+    }
+
+    /**
+     * Build the error message shown when a token following a command name doesn't
+     * match any known subcommand of that command.
+     *
+     * @param \Cake\Console\CommandCollection $commands The command collection.
+     * @param string $name The matched command name (e.g. "i18n").
+     * @param string $token The unknown next token (e.g. "nonsense").
+     * @return string
+     */
+    protected function unknownSubcommandMessage(
+        CommandCollection $commands,
+        string $name,
+        string $token,
+    ): string {
+        $prefix = $name . ' ';
+        $available = [];
+        foreach ($commands->keys() as $key) {
+            if (str_starts_with($key, $prefix)) {
+                $available[] = $key;
+            }
+        }
+        sort($available);
+
+        $message = "Unknown command `{$this->root} {$name} {$token}`.";
+        if ($available !== []) {
+            $message .= "\nAvailable subcommands: `" . implode('`, `', $available) . '`.';
+        }
+        $message .= "\nRun `{$this->root} {$name} --help` to see usage.";
+
+        return $message;
+    }
+
+    /**
+     * Execute a Command class.
+     *
+     * @param \Cake\Console\CommandInterface $command The command to run.
+     * @param array $argv The CLI arguments to invoke.
+     * @param \Cake\Console\ConsoleIo $io The console io
+     * @return int|null Exit code
+     */
+    protected function runCommand(CommandInterface $command, array $argv, ConsoleIo $io): ?int
+    {
+        try {
+            if ($command instanceof EventListenerInterface) {
+                $this->getEventManager()->on($command);
+            }
+            if ($command instanceof EventDispatcherInterface) {
+                $command->setEventManager($this->getEventManager());
+            }
+
+            return $command->run($argv, $io);
+        } catch (StopException $e) {
+            return $e->getCode();
+        }
+    }
+
+    /**
+     * The wrapper for creating command instances.
+     *
+     * @param class-string<\Cake\Console\CommandInterface> $className Command class name.
+     * @return \Cake\Console\CommandInterface
+     */
+    protected function createCommand(string $className): CommandInterface
+    {
+        if (!$this->factory) {
+            $container = null;
+            if ($this->app instanceof ContainerApplicationInterface) {
+                $container = $this->app->getContainer();
+            }
+
+            $this->factory = new CommandFactory($container);
+            $container?->add(CommandFactoryInterface::class, $this->factory);
+        }
+
+        return $this->factory->create($className);
+    }
+
+    /**
+     * Ensure that the application's routes are loaded.
+     *
+     * Console commands and shells often need to generate URLs.
+     *
+     * @return void
+     */
+    protected function loadRoutes(): void
+    {
+        if (!($this->app instanceof RoutingApplicationInterface)) {
+            return;
+        }
+        $builder = Router::createRouteBuilder('/');
+
+        $this->app->routes($builder);
+        if ($this->app instanceof PluginApplicationInterface) {
+            $this->app->pluginRoutes($builder);
+        }
+    }
+}

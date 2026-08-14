@@ -1,0 +1,3 @@
+perl pl_ppsk {
+	filename = ${modconfdir}/perl/ppsk.pl
+}

@@ -1,0 +1,3 @@
+perl pl_client_check_usage {
+	filename = ${modconfdir}/perl/client_check_usage.pl
+}

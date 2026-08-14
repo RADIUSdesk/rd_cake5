@@ -1,0 +1,82 @@
+<?php
+/**
+ * Created by G-edit.
+ * User: dirkvanderwalt
+ * Date: 02/06/2020
+ * Time: 00:00
+ */
+
+namespace App\Controller;
+
+use App\Model\Table\CountriesTable;
+use App\Model\Table\TimezonesTable;
+
+class UtilitiesController extends AppController {
+
+    protected CountriesTable $Countries;
+    protected TimezonesTable $Timezones;
+
+
+    public function initialize():void{
+        parent::initialize();
+        
+        $this->Countries   = $this->fetchTable('Countries');
+        $this->Timezones   = $this->fetchTable('Timezones');
+        $this->Authentication->allowUnauthenticated([
+            'timezonesIndex',
+            'countriesIndex',
+            'sessionLimits'
+        ]);       
+    }
+    
+    public function timezonesIndex(){   
+        $items      = [];
+        $results    = $this->{'Timezones'}->find()->all();        
+        foreach($results as $ent){
+            array_push($items,['id' => $ent->id ,'name'=> $ent->name, 'value'=> $ent->value]);       
+        }
+        $this->set([
+            'items'         => $items,
+            'success'       => true
+        ]); 
+        $this->viewBuilder()->setOption('serialize', true); 
+    }
+    
+    public function countriesIndex(){
+
+        $items      = [];
+        $results    = $this->{'Countries'}->find()->all();
+           
+        foreach($results as $ent){
+            array_push($items,['id' => $ent->alpha_2_code ,'name'=> $ent->name]);       
+        }
+          
+        $this->set([
+            'items'         => $items,
+            'success'       => true
+        ]); 
+        $this->viewBuilder()->setOption('serialize', true);    
+    }
+    
+    public function sessionLimits(){
+    
+        $items      = [
+            ['id' => 0, 'name' => 'No Limit'],
+            ['id' => 1, 'name' => '1'],
+            ['id' => 2, 'name' => '2'],
+            ['id' => 3, 'name' => '3'],
+            ['id' => 4, 'name' => '4'],
+            ['id' => 5, 'name' => '5'],
+            ['id' => 10, 'name' => '10'],
+            ['id' => 15, 'name' => '15'],
+            ['id' => 20, 'name' => '20']      
+        ];        
+        $this->set([
+            'items'         => $items,
+            'success'       => true
+        ]); 
+        $this->viewBuilder()->setOption('serialize', true);    
+         
+    }
+      
+}

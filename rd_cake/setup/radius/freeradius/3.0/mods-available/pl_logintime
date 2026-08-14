@@ -1,0 +1,3 @@
+perl pl_logintime {
+	filename = ${modconfdir}/perl/logintime.pl
+}

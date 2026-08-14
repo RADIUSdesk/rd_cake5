@@ -1,0 +1,3 @@
+perl pl_inner_tunnel {
+	filename = ${modconfdir}/perl/inner_tunnel.pl
+}

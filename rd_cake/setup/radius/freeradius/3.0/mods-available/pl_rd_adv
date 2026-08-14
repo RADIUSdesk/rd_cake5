@@ -1,0 +1,3 @@
+perl pl_rd_adv {
+	filename = ${modconfdir}/perl/rd_adv.pl
+}

@@ -1,0 +1,41 @@
+#---------------------------------------------------------------
+#---- AUG 2026 CRON file for RADIUSdesk running CakePHPv5 ------
+#---- should live under /etc/cron.d/ ---------------------------
+#---------------------------------------------------------------
+
+#Every five minutes check for 'down' nodes
+*/5 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake update_node_downtime >> /dev/null 2>&1
+
+* * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake auto_close_sessions >> /dev/null 2>&1
+
+* * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake accounting >> /dev/null 2>&1
+*/15 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake voucher >> /dev/null 2>&1
+*/10 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake auto_add_devices >> /dev/null 2>&1
+30 2 * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake auto_clean_mesh_desk >> /dev/null 2>&1
+30 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake update_nas_data_usage >> /dev/null 2>&1
+
+#Daily user_stats
+10 4 * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake update_user_stats_dailies >> /dev/null 2>&1 
+
+#Improved reporting for meshes (also modify the Nginx config file accordingly)
+#Every five minutes, process any reports from the temp_reports table (also check the syslog file there will be a report from this script saying how long it took ... should be under 5 min!!)
+*/5 * * * * www-data php /var/www/html/cake4/rd_cake/setup/scripts/reporting/process_report.php >> /dev/null 2>&1
+
+#FUP Run every minute 
+* * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake fup >> /dev/null 2>&1
+
+#OTP Cleanup  
+*/5 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake otp_cleanup >> /dev/null 2>&1
+
+#* * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake freeradius:collect-stats --server 127.0.0.1 --port 18121 --secret adminsecret --attrs /etc/freeradius/status-all.txt --tag main >> /var/log/freeradius-stats.log 2>&1
+* * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake freeradius:collect-stats >> /dev/null 2>&1
+
+#to_date -> expired/active admin_state sync
+*/15 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake permanent-users:sync-expiration >> /dev/null 2>&1
+
+
+#Alert emails
+0 * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake send_notifications >> /dev/null 2>&1
+
+#Monitor MWAN Interfaces
+* * * * * www-data cd /var/www/html/cake4/rd_cake && bin/cake interface:changes >> /dev/null 2>&1

@@ -1,0 +1,3 @@
+perl pl_auto_add_dynamic_client {
+    filename = ${modconfdir}/perl/auto_add_dynamic_client.pl
+}

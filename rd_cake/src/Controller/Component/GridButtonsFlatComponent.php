@@ -1,0 +1,2026 @@
+<?php
+//----------------------------------------------------------
+//---- Author: Dirk van der Walt
+//---- License: GPL v3
+//---- Description: A component used to check and produce Ajax-ly called grid tooblaar items
+//---- Date: 20-JUL-2022
+//------------------------------------------------------------
+
+namespace App\Controller\Component;
+use Cake\Controller\Component;
+
+use Cake\Core\Configure;
+use Cake\Core\Configure\Engine\PhpConfig;
+
+class GridButtonsFlatComponent extends Component {
+
+    protected string $scale   = 'large';  //Later we will improve the code to change this to small for smaller screens
+    
+    protected $t;
+    protected $title;
+    protected $controller;
+    
+    protected string $btnUiReload  = 'button-orange';
+    protected string $btnUiAdd     = 'button-green';
+    protected string $btnUiDelete  = 'button-red';
+    protected string $btnUiEdit    = 'button-blue';
+    protected string $btnUiView    = 'button-orange';
+    
+    protected string $btnUiNote    = 'default';
+    protected string $btnUiCSV     = 'default';
+    protected string $btnUiPassword = 'default';
+    protected string $btnUiRadius  = 'default';
+    protected string $btnUiEnable  = 'default';
+    protected string $btnUiGraph   = 'default';
+    protected string $btnUiMail    = 'default';
+    protected string $btnUiPdf     = 'default';
+    protected string $btnUiMap     = 'default';
+    protected string $btnUiBan     = 'default';
+    protected string $btnUiUnknownClients = 'button-green';
+    protected string $btnUiByod    = 'button-metal';
+    protected string $btnUiTopUp   = 'button-metal';
+    
+    protected string $btnUiConfigure = 'default';
+    protected string $btnUiPolicies  = 'default';
+    protected string $btnUiUsers     = 'default';
+    protected string $btnUiTags      = 'default';
+    protected string $btnUiChangeMode = 'default';
+    protected string $btnUiRedirect  = 'default';
+    protected string $btnUiAttach    = 'button-blue';
+    protected string $btnUiAdvancedEdit = 'button-orange';
+    
+    protected string $btnUiExecute     = 'button-green';
+    protected string $btnUiHistory     = 'button-blue';
+    protected string $btnUiRestart     = 'button-red';
+    protected string $btnUiRogue       = 'button-orange';
+     
+    protected string $btnUiProfComp    = 'button-metal';
+    
+    protected array $btnReload = [];
+    protected array $btnReloadTimer = [];
+    protected array $btnAdd = [];
+    protected array $btnEdit = [];
+    protected array $btnDelete = [];
+    protected array $btnNote = [];
+    protected array $btnCSV = [];
+    
+    protected array $btnPassword = [];
+    protected array $btnEnable = [];
+    protected array $btnAdminState = [];
+    protected array $btnRadius = [];
+    protected array $btnGraph = [];
+    protected array $btnMail = [];
+    protected array $btnPdf = [];
+    protected array $btnAddMesh = [];
+    protected array $btnAddAp = [];
+    protected array $btnAttach = [];
+    protected array $btnRedirect = [];
+    protected array $btnChangeMode = [];
+    protected array $btnMap = [];
+    protected array $btnBan = [];
+    protected array $btnTags = [];
+    protected array $btnPolicies = [];
+    protected array $btnUsers = [];
+    protected array $btnConfigure = [];
+    protected array $btnByod = [];
+    protected array $btnTopUp = [];
+    protected array $btnProfComp = [];
+    protected array $btnUnknownClients = [];
+    protected array $btnAdvancedEdit = [];
+    protected array $btnView = [];
+    protected array $btnExecute = [];
+    protected array $btnHistory = [];
+    protected array $btnRestart = [];
+    protected array $btnRogue = [];
+    protected array $btnAvailable = [];
+    protected array $btnAcknowledged = [];
+    protected array $btnApi = [];
+    protected array $btnConfigCall = [];
+    protected array $btnActive = [];
+    protected array $btnSuspend = [];
+    protected array $btnInactive = [];
+    
+    // Execute any other additional setup for your component.
+    public function initialize(array $config):void
+    {
+        parent::initialize($config);
+        $this->btnReload = [
+            'xtype'     =>  'button', 
+            'glyph'     => Configure::read('icnReload'),
+            'scale'     => $this->scale,
+            'itemId'    => 'reload',
+            'tooltip'   => __('Reload'),
+            'ui'        => $this->btnUiReload
+        ];
+        $this->btnReloadTimer = [
+            'xtype'     => "splitbutton",
+            'glyph'     => Configure::read('icnReload'),
+            'scale'     => $this->scale,
+            'itemId'    => 'reload',
+            'tooltip'   => __('Reload'),
+            'ui'        => $this->btnUiReload,
+            'menu'      => [
+                'items' => [
+                    '<b class="menu-title">Reload every:</b>',
+                    array( 'text'  => __('30 seconds'),      'itemId'    => 'mnuRefresh30s', 'group' => 'refresh','checked' => false ),
+                    array( 'text'  => __('1 minute'),        'itemId'    => 'mnuRefresh1m', 'group' => 'refresh' ,'checked' => false),
+                    array( 'text'  => __('5 minutes'),       'itemId'    => 'mnuRefresh5m', 'group' => 'refresh', 'checked' => false ),
+                    array( 'text'  => __('Stop auto reload'),'itemId'    => 'mnuRefreshCancel', 'group' => 'refresh', 'checked' => true)
+                ]
+            ]
+        ];
+        $this->btnAdd =  [
+            'xtype'     => 'button',
+            'glyph'     => Configure::read('icnAdd'),
+            'scale'     => $this->scale,
+            'itemId'    => 'add',
+            'tooltip'   => __('Add'),
+            'ui'        => $this->btnUiAdd
+        ];
+		
+        $this->btnEdit =  [
+            'xtype'     => 'button',
+            'glyph'     => Configure::read('icnEdit'),
+            'scale'     => $this->scale,
+            'itemId'    => 'edit',
+            'tooltip'   => __('Edit'),
+            'ui'        => $this->btnUiEdit
+        ];
+		
+        $this->btnDelete =  [
+            'xtype'     => 'button',
+            'glyph'     => Configure::read('icnDelete'),
+            'scale'     => $this->scale,
+            'itemId'    => 'delete',
+            'tooltip'   => __('Delete'),
+            'ui'        => $this->btnUiDelete
+        ];
+
+        $this->btnNote = [
+            'xtype'     => 'button',     
+            'glyph'     => Configure::read('icnNote'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'note',    
+            'tooltip'   => __('Add notes'),
+            'ui'        => $this->btnUiNote
+        ];
+
+        $this->btnCSV = [
+            'xtype'     => 'button',     
+            'glyph'     => Configure::read('icnCsv'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'csv',      
+            'tooltip'   => __('Export CSV'),
+            'ui'        => $this->btnUiCSV
+        ];
+
+        $this->btnPassword = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnLock'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'password', 
+            'tooltip'   => __('Change Password'),
+            'ui'        => $this->btnUiPassword
+        ];
+
+        $this->btnEnable = [
+            'xtype'     => 'button',  
+            'glyph'     => Configure::read('icnLight'),
+            'scale'     => $this->scale, 
+            'itemId'    => 'enable_disable',
+            'tooltip'   => __('Enable / Disable'),
+            'ui'        => $this->btnUiEnable
+        ];
+        
+        $this->btnAdminState = [
+            'xtype'     => 'button',  
+            'glyph'     => Configure::read('icnGears'),
+            'scale'     => $this->scale, 
+            'itemId'    => 'admin_state',
+            'tooltip'   => __('Change Admin State'),
+            'ui'        => $this->btnUiEnable
+        ];
+
+        $this->btnRadius = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnRadius'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'test_radius',  
+            'tooltip'   => __('Test RADIUS'),
+            'ui'        => $this->btnUiRadius
+        ];
+
+        $this->btnGraph = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnGraph'),   
+            'scale'     => $this->scale, 
+            'itemId'    => 'graph',  
+            'tooltip'   => __('Graphs'),
+            'ui'        => $this->btnUiGraph
+        ];
+
+        $this->btnMail = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnEmail'),
+            'scale'     => $this->scale, 
+            'itemId'    => 'email', 
+            'tooltip'   => __('e-Mail voucher'),
+            'ui'        => $this->btnUiMail
+        ];
+
+        $this->btnPdf  = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnPdf'),    
+            'scale'     => $this->scale, 
+            'itemId'    => 'pdf',      
+            'tooltip'   => __('Export to PDF'),
+            'ui'        => $this->btnUiPdf
+        ];
+        
+        $this->btnAddMesh = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnNode'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'attachMesh',      
+            'tooltip'=> __('Add To Mesh'),
+            'ui'        => $this->btnUiAttach
+        ];
+        
+        $this->btnAddAp = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnCube'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'attachAp',      
+            'tooltip'=> __('Add To AP Profile'),
+            'ui'        => $this->btnUiAttach
+        ];
+        
+        
+        $this->btnAttach = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnAttach'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'attach',      
+            'tooltip'=> __('Attach'),
+            'ui'        => $this->btnUiAttach
+        ];
+        
+        $this->btnRedirect = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnRedirect'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'redirect',   
+            'tooltip'   => __('Redirect'),
+            'ui'        => $this->btnUiRedirect
+        ];
+        
+        $this->btnChangeMode = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnSpanner'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'change_device_mode',   
+            'tooltip'   => __('Change Device Mode'),
+            'ui'        => $this->btnUiChangeMode
+        ];
+		
+        $this->btnMap = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnMap'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'map',   
+            'tooltip'   => __('Map'),
+            'ui'        => $this->btnUiMap
+        ];
+        
+        $this->btnBan   = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnBan'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'ban',   
+            'tooltip'   => 'Blocked and Speed Limited Devices',
+            'ui'        => $this->btnUiBan
+        ];
+      
+		
+        $this->btnTags = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnTag'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'tag',   
+            'tooltip'   => __('Manage tags'),
+            'ui'        => $this->btnUiTags
+        ];
+        
+        $this->btnPolicies = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnScale'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'btnPolicies',   
+            'tooltip'   => __('Policies'),
+            'ui'        => $this->btnUiPolicies 
+        ];
+        
+        $this->btnUsers = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnUser'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'btnUsers',   
+            'tooltip'   => __('Users'),
+            'ui'        => $this->btnUiUsers 
+        ];
+        $this->btnConfigure = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnConfigure'), 
+            'scale'     => $this->scale, 
+            'itemId'    => 'preferences',   
+            'tooltip'   => __('Preferences'),
+            'ui'        => $this->btnUiConfigure
+        ];
+        $this->btnByod = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnDevice'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'byod',
+            'tooltip'   => __('BYOD'),
+            'ui'        => $this->btnUiByod
+        ];
+        
+        $this->btnTopUp = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnTopUp'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'topup',
+            'tooltip'   => __('Top-Ups'),
+            'ui'        => $this->btnUiTopUp
+        ];
+               
+        $this->btnProfComp = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnComponent'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'profile_components',
+            'tooltip'   => __('Profile Components'),
+            'ui'        => $this->btnUiProfComp
+        ];
+        
+        $this->btnUnknownClients = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnBus'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'unknown_clients',
+            'tooltip'   => __('New Arrivals'),
+            'ui'        => $this->btnUiUnknownClients
+        ];
+        
+        $this->btnAdvancedEdit = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnGears'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'advanced_edit',
+            'tooltip'   => __('Advanced Edit'),
+            'ui'        => $this->btnUiAdvancedEdit
+        ]; 
+        
+        $this->btnView = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnView'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'view',
+            'tooltip'   => __('View'),
+            'ui'        => $this->btnUiView
+        ];
+        
+        $this->btnExecute = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnSpanner'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'execute',
+            'tooltip'   => __('Execute'),
+            'ui'        => $this->btnUiExecute
+        ];
+        
+        $this->btnHistory = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnWatch'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'history',
+            'tooltip'   => __('View execute history'),
+            'ui'        => $this->btnUiHistory
+        ];
+        
+        $this->btnRestart = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnPower'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'restart',
+            'tooltip'   =>  __('Restart'),
+            'ui'        => $this->btnUiRestart
+        ];
+        
+        $this->btnRogue = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnEyeSlash'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'rogue_detect',
+            'tooltip'   =>  __('Detect Rogue Access Points'),
+            'ui'        => $this->btnUiRogue
+        ];
+        
+        $this->btnAvailable = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnWatch'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'available',
+            'tooltip'   => __('View Availability History'),
+            'ui'        => $this->btnUiHistory
+        ]; 
+        
+        $this->btnAcknowledged = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnHandshake'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'acknowledged',
+            'tooltip'   => __('Acknowlege Alert'),
+            'ui'        => $this->btnUiEdit
+        ]; 
+        
+        $this->btnApi = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnGears'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'mikrotik_api',
+            'tooltip'   => 'Mikrotik API',
+            'disabled' 	=> true,
+            'ui'        => $this->btnUiEdit
+        ]; 
+         
+        $this->btnConfigCall = [
+            'xtype'     => 'button', 
+            'glyph'     => Configure::read('icnCog'), 
+            'scale'     => $this->scale,
+            'itemId'    => 'config',
+            'tooltip'   => 'Config Call',
+            'ui'        => 'default'       
+        ];
+        
+        $this->btnActive = [
+            'xtype'     => 'button',
+            'glyph'     => Configure::read('icnPlay'),
+            'scale'     => $this->scale,
+            'itemId'    => 'activate',
+            'ui'        => 'button-green',
+            'tooltip'   => __('Activate Access Point')
+        ];
+        
+        $this->btnSuspend = [
+            'xtype'     => 'button',
+            'glyph'     => Configure::read('icnPause'),
+            'scale'     => $this->scale,
+            'itemId'    => 'suspend',
+            'ui'        => 'button-orange',
+            'tooltip'   => __('Suspend Service')
+        ];
+        
+        $this->btnInactive = [
+            'xtype'     => 'button',
+            'glyph'     => Configure::read('icnStop'),
+            'scale'     => $this->scale,
+            'itemId'    => 'deactivate',
+            'ui'        => 'button-blue',
+            'tooltip'   => __('Deactivate Access Point')
+        ];
+                        
+    }
+    
+    private function _getButtonsByTypeAndRights($type, $right='admin') {
+    
+        // Define the mapping of types, rights, and their associated methods
+        $typeRightsMapping = [
+         /*   'FirewallApps' => [
+                'admin' => '_fetchBasic',
+            ],*/
+
+            'FrAcctAndAuth' => [
+                'admin' => '_fetchReloadDelete',
+                'view'  => '_fetchReload'
+            ],
+            'PermanentUsers' => [
+                'admin' => function() {
+                    return [
+                        $this->_fetchBasic(true),
+                        $this->_fetchCsvUpDown(),
+                        $this->_fetchPermanentUserExtras(),
+                    ];
+                },
+                'view' => function() {
+                    return [
+                        'xtype' => 'buttongroup',
+                        'title' => $this->t,
+                        'items' => [
+                            $this->btnReloadTimer,
+                            $this->btnRadius,
+                            $this->btnGraph,
+                        ],
+                    ];
+                },
+            ],
+        ];
+
+        // Check if the combination exists and return the menu accordingly
+        if (isset($typeRightsMapping[$type][$right])) {
+            $handler = $typeRightsMapping[$type][$right];
+            
+            // If the handler is a callable (like a closure), call it
+            if (is_callable($handler)) {
+                return $handler();
+            }
+            
+            // Otherwise, assume it's a method name
+            $result = $this->$handler();
+            return is_array($result) ? $result : [$result];
+        }
+
+        // Return an empty array or a default value if type/right is not recognized
+        return [];
+    }
+
+
+    public function returnButtons($title = true,$type='basic',$right='admin'){
+        //First we will ensure there is a token in the request
+        $this->controller = $this->_registry->getController();
+        
+        $this->title = $title;
+        
+        if($title){
+            $this->t = __('Action');
+        }else{
+            $this->t = null;
+        }
+        
+        $menu = [];
+
+        if($type == 'refresh'){
+            $b      = $this->_fetchRefresh();
+            $menu   = [$b];
+        }
+           
+        if($type == 'basic'){
+            $b = $this->_fetchBasic();
+            $menu = [$b];
+        }
+        
+       	if($type == 'top_ups'){
+            $b  = $this->_fetchAddAndDelete();
+            $d  = $this->_fetchDocumentTopUp();
+            $menu = [$b,$d];
+        }
+        
+      	if($type == 'access_providers'){
+            $b  = $this->_fetchBasic();
+            $d  = $this->_fetchDocument();
+            $a  = $this->_fetchApExtras();                
+            $menu = [$b,$a,$d];
+        }
+               
+        if($type == 'Hardwares'){
+            $b = $this->_fetchBasic();
+            array_push($b['items'],[
+                    'xtype'     => 'button', 
+                    'glyph'     => Configure::read('icnCamera'),
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'photo',     
+                    'tooltip'   => __('Edit Photo'),
+                    'ui'        => $this->btnUiEdit
+                ]);
+            $menu = [$b];
+        }
+               
+        if($type == 'DynamicClients'){      
+            $shared_secret = "(Please specify one)";
+            if(Configure::read('DynamicClients.shared_secret')){
+                $shared_secret = Configure::read('DynamicClients.shared_secret');
+            }
+                  
+            $b = $this->_fetchBasicPlain('disabled',true,$type);
+            $a  = $this->_fetchDynamicClientsExtras();
+            $n = [
+                'xtype'     => 'buttongroup',
+                'width'     => 200,
+                'title'     => null,
+                'border'    => false,
+                'bodyBorder' => false,
+                'frame'     => false,
+                'items'     => [
+                    [
+                    'xtype'     => 'tbtext', 
+                    'html'      => [
+                        '<div style="padding:2px;">',
+                        '<div class="txtBlue" style="text-align: center;"><i class="fa  fa-lightbulb-o"></i> Site Wide Shared Secret</div>',
+                        '<div style="margin:3px; text-align: center;"><font size="4"><b>'.$shared_secret.'</b></font></div>',
+                        '</div>'
+                    ]
+                ]
+                ]];
+            $menu = [$b,[ 'xtype' => 'tbseparator'],$a,[ 'xtype' => 'tbseparator'],$n];
+            
+        }
+        
+        if(($type == 'vouchers')&&($right === 'admin')){
+            $b  = $this->_fetchBasicVoucher();
+            $d  = $this->_fetchDocumentVoucher();
+            $a  = $this->_fetchVoucherExtras();
+            $menu = [$b,[ 'xtype' => 'tbseparator'],$d,[ 'xtype' => 'tbseparator'],$a];
+        }
+        
+        if(($type == 'vouchers')&&($right === 'view')){
+            $a = [
+                'xtype' => 'buttongroup',
+                'title' => null,
+                'border' => false,
+                'bodyBorder' => false,
+                'frame' => false, 
+                'items' => [
+                $this->btnReloadTimer,
+                $this->btnRadius,
+                $this->btnGraph,
+            ]];
+            $menu = $a; 
+        }
+        
+        if($type == 'fr_acct_and_auth'){
+            $b  = $this->_fetchFrAcctAuthBasic();
+            $menu = [$b];
+        }
+        
+        //============================
+        if($type == 'PermanentUsers'){
+            $menu = $this->_getButtonsByTypeAndRights($type,$right);
+        } 
+        
+        if($type == 'FrAcctAndAuth'){
+            $menu = $this->_getButtonsByTypeAndRights($type,$right);    
+        }
+        //============================      
+        
+        if($type == 'DynamicClientMacs'){
+        	$menu = [
+            'xtype' => 'buttongroup',
+            'title' => null, 
+            'items' => [
+		            $this->btnReload,
+		            $this->btnAttach,
+		            $this->btnDelete,
+		            $this->btnEdit,
+		        ]
+        	];
+        }
+        
+        
+         if($type == 'devices'){
+            $b  = $this->_fetchBasic(true);
+            $d  = $this->_fetchDocument();
+            $a  = $this->_fetchDeviceExtras();
+            $menu = array($b,$d,$a);
+        }
+        
+        if($type == 'dynamic_details'){
+            $b  = $this->_fetchBasic(true);
+            $d  = $this->_fetchDocument();
+            $a  = $this->_fetchDynamicDetailExtras();
+            $dc = $this->_fetchDynamicDetailDataCollection();
+            $menu = [$b,$d,$a,$dc];
+        }
+        
+       	if($type == 'dynamic_translations'){
+            $b = $this->_fetchDynamicTranslations();
+            $menu = $b; 
+        }
+        
+        if($type == 'Meshes'){
+            $b = $this->_fetchBasicMeshes();
+            $a  = $this->_fetchExtrasMeshes();
+            $s  = '|';
+            $s2 = '->';
+			
+            $fb = [
+                'xtype'   => 'component', 
+                'itemId'  => 'totals',  
+                 'tpl'    => [
+                     "<div style='font-size:larger;width:400px;'>",
+                        "<ul class='fa-ul'>",
+                            "<li style='padding:4px;'>",
+                                // Display meshes_total with ONLINE and OFFLINE parts
+                                "<span class='fa-li' style='font-family:FontAwesome;'>&#xf20e</span> {meshes_total} networks",
+                                "<tpl if='meshes_up &gt; 0'>",
+                                    " - <span style='color:green;'>  {meshes_up} online</span>",
+                                "</tpl>",
+                                "<tpl if='meshes_down &gt; 0'>",
+                                    " - <span style='color:#c27819;'>  {meshes_down} offline</span>",
+                                "</tpl>",
+                            "</li>",
+                            "<li style='padding:4px;'>",
+                                // Display nodes_total with ONLINE and OFFLINE parts
+                                "<i class='fa-li fa fa-share-alt'></i> {nodes_total} nodes",
+                                "<tpl if='nodes_up &gt; 0'>",
+                                    " - <span style='color:green;'>  {nodes_up} online</span>",
+                                "</tpl>",
+                                "<tpl if='nodes_down &gt; 0'>",
+                                    " - <span style='color:#c27819;'>  {nodes_down} offline</span>",
+                                "</tpl>",
+                            "</li>",
+                        "</ul>",
+                    "</div>"         
+                ],
+                'data'   =>  [],
+                'cls'    => 'lblRd'
+            ];           
+           	$menu = [$b,[ 'xtype' => 'tbseparator'],$a,$s,$fb];          
+        }
+        
+        if($type == 'MeshNodes'){        
+            $b  = $this->_fetchBasicMeshNodes();
+          	$d  = $this->_fetchCsvUpDownPlain();
+            $menu = [$b,[ 'xtype' => 'tbseparator'],$d,[ 'xtype' => 'tbseparator']];     
+        }
+        
+        if($type == 'NodeDetails'){
+            $b = $this->_fetchNodeDetails();
+            $menu = [$b]; 
+        }
+        
+        if($type == 'MeshEntries'){
+            $b = $this->_fetchCrud();
+            $menu = [$b]; 
+        }
+        
+        if($type == 'MeshExits'){
+            $b = $this->_fetchCrud();
+            $menu = [$b]; 
+        }
+        
+         if($type == 'ApProfiles'){
+            $b = $this->_fetchBasicApProfiles();
+            $a = $this->_fetchExtrasApProfiles();
+            $menu = [$b,[ 'xtype' => 'tbseparator'],$a,[ 'xtype' => 'tbseparator']]; 
+        }
+        
+        if($type == 'ApProfileEntries'){
+            $b = $this->_fetchCrud();
+            $menu = [$b]; 
+        }
+        
+        if($type == 'ApProfileExits'){
+            $b = $this->_fetchCrud();
+            $menu = [$b]; 
+        }
+        
+        if($type == 'Aps'){
+            $b  = $this->_fetchAps();
+            $c  = $this->_apStates();
+            $d  = $this->_fetchCsvUpDownPlain();
+            $menu = [$b,[ 'xtype' => 'tbseparator'],$c,[ 'xtype' => 'tbseparator'],$d,[ 'xtype' => 'tbseparator']]; 
+        }
+        
+        if($type == 'ApProfileDevices'){
+            $b = $this->_fetchCrud();
+            $menu = [$b]; 
+        }
+        
+        if($type == 'accel_servers'){
+            $b = $this->_fetchBasic(true);
+            
+            $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+                $this->btnReloadTimer,
+                [
+                    'xtype'         => 'button',
+                    'glyph'         => Configure::read('icnWatch'),
+                    'pressed'       => false,                       
+                    //To list only active
+                    //'glyph'         => Configure::read('icnLight'),
+                    //'pressed'       => true,                                
+                    'scale'         => $this->scale,
+                    'itemId'        => 'online',
+                    'enableToggle'  => true,                       
+                    'ui'            => 'button-green',  
+                    'tooltip'       => __('Show only online servers')
+                ],
+                $this->btnAdd,
+                $this->btnDelete,
+                $this->btnEdit,
+                [
+                    'xtype'     => 'button', 
+                    'glyph'     => Configure::read('icnGears'), 
+                    'scale'     => $this->scale,
+                    'itemId'    => 'restart',
+                    'tooltip'   =>  __('Restart Service'),
+                    'ui'        => $this->btnUiRestart
+                ],
+                [
+                    'xtype'     => 'button', 
+                    'glyph'     => Configure::read('icnConnect'), 
+                    'scale'     => $this->scale,
+                    'itemId'    => 'sessions',
+                    'tooltip'   =>  __('Show Active Sessions'),
+                    'ui'        => $this->btnUiRestart
+                ]
+            ]];
+            
+            $menu = [$b,'|', 
+                [   
+                    'xtype'     => 'component', 
+                    'itemId'    => 'totals',  
+                    'tpl'       => [
+                        "<div>",
+                        "<label class='lblTipItem' style='font-weight:lighter;color:#186a86;'>COUNT <span style='color:#5c5f63;'>{count}</span></label>",
+                        "<div style='clear:both;'></div>",
+                        "<label class='lblTipItem' style='font-weight:lighter;color:#186a86;'>SESSIONS  <span style='color:#5c5f63;'>{sessions}</span></label>",
+                        "<div style='clear:both;'></div>",
+                    ],
+                    'style'     => 'margin-right:5px',
+                    'data'      => []
+                ]
+            ]; 
+        }
+        
+        
+        if($type == 'accel_sessions'){
+            $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+                $this->btnReloadTimer,
+                [
+                    'xtype'         => 'button',
+                    'glyph'         => Configure::read('icnWatch'),
+                    'pressed'       => false,                       
+                    //To list only active
+                    //'glyph'         => Configure::read('icnLight'),
+                    //'pressed'       => true,                                
+                    'scale'         => $this->scale,
+                    'itemId'        => 'connected',
+                    'enableToggle'  => true,                       
+                    'ui'            => 'button-green',  
+                    'tooltip'       => __('Show only currently connected')
+                ],
+                $this->btnDelete,
+                [
+                    'xtype'     => 'button', 
+                    'glyph'     => Configure::read('icnChainBroken'), 
+                    'scale'     => $this->scale,
+                    'itemId'    => 'disconnect',
+                    'tooltip'   =>  __('Disconnect'),
+                    'ui'        => $this->btnUiRestart
+                ]
+            ]];
+            $menu = [$b,'|',             
+                [   
+                    'xtype'     => 'component', 
+                    'itemId'    => 'totalsData',  
+                    'tpl'       => [
+                        "<div>",
+                        "<label class='lblTipItem' style='font-weight:lighter;color:#186a86;'>IN  <span style='color:#5c5f63;'>{[Ext.ux.bytesToHuman(values.in)]}</span></label>",
+                        "<div style='clear:both;'></div>",
+                        "<label class='lblTipItem' style='font-weight:lighter;color:#186a86;'>OUT  <span style='color:#5c5f63;'>{[Ext.ux.bytesToHuman(values.out)]}</span></label>",
+                        "<div style='clear:both;'></div>",
+                        "<label class='lblTipItem' style='font-weight:lighter;color:#186a86;'>TOTAL  <span style='color:#5c5f63;'>{[Ext.ux.bytesToHuman(values.total)]}</span></label>",
+                        "</div>"
+                    ],
+                    'style'     => 'margin-right:5px',
+                    'data'      => []
+                ],
+                '|',
+                [   
+                    'xtype'     => 'component', 
+                    'itemId'    => 'totals',  
+                    'tpl'       => [
+                        "<div>",
+                        "<label class='lblTipItem' style='font-weight:lighter;color:#186a86;'>COUNT <span style='color:#5c5f63;'>{count}</span></label>",
+                        "<div style='clear:both;'></div>",
+                    ],
+                    'style'     => 'margin-right:5px'
+                ],
+            ];
+        }
+        
+        if($type == 'accel_profiles'){
+            $b  = $this->_fetchBasic();
+            $menu = [$b];
+        }
+                      
+        if($type == 'unknown_ap_or_nodes'){
+            $b  = $this->_fetchUnknown();
+            $menu = [$b]; 
+        }
+        
+       	if($type == 'add_and_delete'){
+            $b = $this->_fetchAddAndDelete();
+            $menu = [$b];
+        }
+        
+       	if($type == 'Schedules'){
+            $b      = $this->_fetchSchedules();
+            $menu   = $b;
+        }
+        
+        if($type == 'FirewallProfiles'){
+            $b      = $this->_fetchFirewallProfiles();
+            $menu   = $b;
+        }
+        
+        if($type == 'MwanProfiles'){
+            $b      = $this->_fetchMwanProfiles();
+            $menu   = $b;
+        }
+        
+        if($type == 'FirewallApps'){
+            $b  = $this->_fetchBasic();
+            $menu = [$b];
+        }
+        
+        if($type == 'SqmProfiles'){
+            $b  = $this->_fetchBasic();
+            $cmb_sqm_profiles = [
+                'xtype'     => 'cmbSqmProfile',
+                'margin'    => '5 0 5 0',
+                'width'		=> 230,
+                'itemId'    => 'cmbSqmProfile',
+                'fieldLabel'=> '',
+                'value'		=> 0,
+                'include_all_option' => true 
+            ];
+        
+            $d = [
+            	'xtype' => 'buttongroup', 
+            	'title' => $this->t,
+            	'items' => [
+            		$cmb_sqm_profiles                   
+            	]
+            ];         
+            $menu = [$b,$d];
+        }
+        
+       	if($type == 'unknown_dynamic'){
+            $b  = $this->_fetchUnknownDynamic();
+            $menu = [$b]; 
+        }
+        
+        if($type == 'Alerts'){
+            $b = [
+                'xtype' => 'buttongroup',
+                'title' => null,
+                'border' => false,
+                'bodyBorder' => false,
+                'frame' => false,
+                'items' => [
+                    $this->btnReload,
+                    $this->btnDelete,
+                    $this->btnAcknowledged 
+                ]
+            ];
+            $menu = $b; 
+        }
+        
+        if($type == 'nas'){
+            $b  = $this->_fetchBasic(true);
+            $a  = $this->_fetchNas();
+            $menu = [$b,$a];
+        }
+               
+        if($type == 'ReloadDelete'){
+            $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+                $this->btnReload,
+                $this->btnDelete
+            ]];
+            $menu = $b; 
+        }
+        
+        if($type == 'RealmSsids'){          
+            $menu = $this->_fetchRealmSsids();       
+        }
+        
+        if($type == 'ppsk'){
+        
+            $cmb_ppsk_groups = [
+                'xtype'     => 'cmbPpskGroups',
+                'margin'    => '5 0 5 0',
+                'width'		=> 230,
+                'itemId'    => 'cmbPpskGroups',
+                'fieldLabel'=> '',
+                'value'		=> 0,
+                'include_all_option' => true 
+            ];
+        
+            $b = [
+            	'xtype' => 'buttongroup', 
+            	'title' => $this->t,
+            	'items' => [
+            		$cmb_ppsk_groups                   
+            	]
+            ];             
+       
+        	$a = [
+            'xtype' => 'buttongroup',
+            'title' => null, 
+            'items' => [
+		            $this->btnReload,
+		            $this->btnAdd,
+		            [
+                        'xtype'     => 'button',
+                        'glyph'     => Configure::read('icnGroup'),
+                        'scale'     => $this->scale,
+                        'itemId'    => 'addGroup',
+                        'tooltip'   => __('Add PSK Group'),
+                        'ui'        => $this->btnUiAdd
+                    ],		            
+		            [
+                        'xtype'     => 'button',
+                        'glyph'     => Configure::read('icnUserPlus'),
+                        'scale'     => $this->scale,
+                        'itemId'    => 'add',
+                        'tooltip'   => __('Add PSK'),
+                        'ui'        => $this->btnUiAdd
+                    ],
+		            $this->btnDelete,
+		            $this->btnEdit
+		        ]
+        	];
+        	$c = $this->_fetchCsvUpDown();
+        	$menu = [$a,$b,$c];
+        }  
+        
+        if($type == 'wireguardServers'){       
+            $a = [
+            'xtype' => 'buttongroup',
+            'title' => null, 
+            'items' => [
+		            $this->btnReload,
+		            $this->btnAdd,		            
+		            $this->btnDelete,
+		            $this->btnEdit,
+		            [
+                        'xtype'     => 'button',
+                        'glyph'     => Configure::read('icnCog'),
+                        'scale'     => $this->scale,
+                        'itemId'    => 'btnInstances',
+                        'tooltip'   => __('Manage Wireguard Instances'),
+                        'ui'        => $this->btnUiEdit
+                    ],
+                    [
+                        'xtype'     => 'button', 
+                        'glyph'     => Configure::read('icnGears'), 
+                        'scale'     => $this->scale,
+                        'itemId'    => 'restart',
+                        'tooltip'   =>  __('Restart Service'),
+                        'ui'        => $this->btnUiRestart
+                    ]
+		        ]
+        	];
+            $menu = [$a];
+        }
+        
+        if($type == 'wireguardInstances'){       
+            $a = [
+            'xtype' => 'buttongroup',
+            'title' => null, 
+            'items' => [
+		            $this->btnReload,
+		            $this->btnAdd,		            
+		            $this->btnDelete,
+		            $this->btnEdit,
+		            [
+                        'xtype'     => 'button',
+                        'glyph'     => Configure::read('icnExchange'),
+                        'scale'     => $this->scale,
+                        'itemId'    => 'btnPeers',
+                        'tooltip'   => __('Manage Wireguard Peers'),
+                        'ui'        => $this->btnUiEdit
+                    ]
+		        ]
+        	];
+            $menu = [$a];
+        } 
+        
+        if($type == 'wireguardPeers'){       
+            $a = [
+            'xtype' => 'buttongroup',
+            'title' => null, 
+            'items' => [
+		            $this->btnReload,
+		            $this->btnAdd,		            
+		            $this->btnDelete,
+		            $this->btnEdit
+		        ]
+        	];
+        	$b = [
+                'xtype' => 'buttongroup',
+                'title' => null, 
+                'items' => [
+                    [
+                        'xtype'     => 'button',
+                        'iconCls'   => 'x-fa fa-file-text',
+                        'scale'     => $this->scale,
+                        'itemId'    => 'btnConfig',
+                        'tooltip'   => __('Peer config as text')
+                    ],
+                    [
+                        'xtype'     => 'button',
+                        'glyph'     => Configure::read('icnQrcode'),
+                        'scale'     => $this->scale,
+                        'itemId'    => 'btnQrCode',
+                        'tooltip'   => __('Peer config as QR code')
+                    ]
+                ]
+        	];
+            $menu = [$a,$b];
+        }        
+                                                   
+        return $menu;
+    }
+    
+   	private function _fetchUnknownDynamic(){
+        $menu = [
+                ['xtype' => 'buttongroup','title' => $this->t, 'items' => [
+                   $this->btnReloadTimer,
+                   $this->btnAttach,
+                   $this->btnDelete, 
+            ]]
+        ];
+        return $menu;
+    }
+    
+    
+    private function _fetchRealmSsids(){
+    
+        $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            $this->btnReload,       
+            $this->btnAdd,
+            $this->btnDelete,
+            $this->btnEdit
+            ]
+	    ];
+	    $c = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            [
+                'xtype'     => 'button', 
+                'glyph'     => Configure::read('icnCalculator'), 
+                'scale'     => $this->scale,
+                'itemId'    => 'recalculate',
+                'tooltip'   =>  __('Recalculate PMKs'),
+                'ui'        => $this->btnUiProfComp
+            ]                   
+        ]]; 
+        
+        $cmb_realm_ssids = [
+            'xtype'     => 'cmbRealmSsids',
+            'margin'    => '5 0 5 0',
+            'width'		=> 230,
+            'itemId'    => 'cmbRealmSsids',
+            'fieldLabel'=> '',
+            'value'		=> 0,
+            'include_all_option' => true 
+        ];
+        
+        $d = [
+        	'xtype' => 'buttongroup', 
+        	'title' => $this->t,
+        	'items' => [
+        		$cmb_realm_ssids                    
+        	]
+        ];  
+           
+	    $menu = [$b,$c,$d];
+        return $menu;       
+    }
+    
+    private function _fetchSchedules(){
+       
+        
+        $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            $this->btnReload,       
+            $this->btnAdd,
+            $this->btnDelete,
+            $this->btnEdit
+            ]
+	    ];
+	    $c = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            [
+                'xtype'     => 'button', 
+                'glyph'     => Configure::read('icnComponent'), 
+                'scale'     => $this->scale,
+                'itemId'    => 'predef_cmds',
+                'tooltip'   =>  __('Predefined Commands'),
+                'ui'        => $this->btnUiProfComp
+            ]                   
+        ]]; 
+        
+        $cmb_schedules = [
+            'xtype'     => 'cmbSchedule',
+            'margin'    => '5 0 5 0',
+            'width'		=> 230,
+            'itemId'    => 'cmbSchedule',
+            'fieldLabel'=> '',
+            'value'		=> 0,
+            'include_all_option' => true 
+        ];
+        
+        $d = [
+        	'xtype' => 'buttongroup', 
+        	'title' => $this->t,
+        	'items' => [
+        		$cmb_schedules                    
+        	]
+        ];  
+           
+	    $menu = [$b,$c,$d];
+        return $menu;    
+    }
+    
+    private function _fetchFirewallProfiles(){
+       
+        
+        $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            $this->btnReload,       
+            $this->btnAdd,
+            $this->btnDelete,
+            $this->btnEdit
+            ]
+	    ];
+	    $c = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            [
+                'xtype'     => 'button', 
+                'glyph'     => Configure::read('icnConfigure'), 
+                'scale'     => $this->scale,
+                'itemId'    => 'firewall_apps',
+                'tooltip'   =>  __('Firewall Apps'),
+                'ui'        => $this->btnUiProfComp
+            ]                   
+        ]]; 
+        
+        $cmb_firewall_profiles = [
+            'xtype'     => 'cmbFirewallProfile',
+            'margin'    => '5 0 5 0',
+            'width'		=> 230,
+            'itemId'    => 'cmbFirewallProfile',
+            'fieldLabel'=> '',
+            'value'		=> 0,
+            'include_all_option' => true 
+        ];
+        
+        $d = [
+        	'xtype' => 'buttongroup', 
+        	'title' => $this->t,
+        	'items' => [
+        		$cmb_firewall_profiles                   
+        	]
+        ];             
+	    $menu = [$b,$c,$d];
+        return $menu;    
+    }
+    
+    private function _fetchMwanProfiles(){
+    
+        $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            $this->btnReload,       
+            $this->btnAdd,
+            $this->btnDelete,
+            $this->btnEdit
+            ]
+	    ];
+	    $c = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            [
+                'xtype'     => 'button', 
+                'glyph'     => Configure::read('icnLink'), 
+                'scale'     => $this->scale,
+                'itemId'    => 'mwan_policies',
+                'tooltip'   =>  __('Multi-WAN Policies'),
+                'ui'        => $this->btnUiProfComp
+            ],
+            [
+                'xtype'     => 'button', 
+                'glyph'     => Configure::read('icnFire'), 
+                'scale'     => $this->scale,
+                'itemId'    => 'mwan_rules',
+                'tooltip'   =>  __('Multi-WAN Firewall Rules'),
+                'ui'        => $this->btnUiProfComp
+            ]                   
+        ]]; 
+        
+        $cmb_mwan_profiles = [
+            'xtype'     => 'cmbMultiWanProfile',
+            'margin'    => '5 0 5 0',
+            'width'		=> 230,
+            'itemId'    => 'cmbMultiWanProfile',
+            'fieldLabel'=> '',
+            'value'		=> 0,
+            'include_all_option' => true 
+        ];
+        
+        $d = [
+        	'xtype' => 'buttongroup', 
+        	'title' => $this->t,
+        	'items' => [
+        		$cmb_mwan_profiles                   
+        	]
+        ];             
+	    $menu = [$b,$c,$d];
+        return $menu;    
+      
+    }
+    
+    
+    private function _fetchRefresh($with_reload_timer=false){
+        $menu 	= [];         
+        $reload = $this->btnReload;     
+        if($with_reload_timer == true){
+            $reload = $this->btnReloadTimer;
+        }
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,
+            'items' => [
+                $reload
+            ]
+        ];     
+        return $menu;
+    
+    }
+    
+          
+  	private function _fetchBasic($with_reload_timer=false){       
+        $menu 	= [];         
+        $reload = $this->btnReload;     
+        if($with_reload_timer == true){
+            $reload = $this->btnReloadTimer;
+        }
+        $menu = ['xtype' => 'buttongroup','title' => $this->t, 'items' => [
+                $reload,
+                $this->btnAdd,
+                $this->btnDelete,
+				$this->btnEdit
+            ]
+        ];     
+        return $menu;
+    }
+    
+    private function _fetchBasicPlain($with_reload_timer=false){       
+        $menu 	= [];         
+        $reload = $this->btnReload;     
+        if($with_reload_timer == true){
+            $reload = $this->btnReloadTimer;
+        }
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+            'items' => [
+                $reload,
+                $this->btnAdd,
+                $this->btnDelete,
+				$this->btnEdit
+            ]
+        ];     
+        return $menu;
+    }
+    
+    private function _fetchDocumentTopUp(){
+        $menu = [];
+        if($this->title){
+            $t = __('Document');
+        }else{
+            $t = null;
+        } 
+        
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => $t, 
+            'items' => [
+                $this->btnCSV
+            ]
+        ];         
+        return $menu;  
+    }
+    
+    private function _fetchDocument(){
+
+        $menu = [];      
+        if($this->title){
+            $t = __('Document');
+        }else{
+            $t = null;
+        }
+        
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => $t,
+            'items' => [
+                $this->btnCSV
+            ]
+        ];           
+        return $menu;
+    }
+    
+    private function _fetchApExtras(){
+
+        $menu = [];     
+        if($this->title){
+            $t = __('Extra Actions');
+        }else{
+            $t = null;
+        }        
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => $t, 
+            'items' => [
+                $this->btnPassword,
+                $this->btnEnable
+            ]
+        ];                    
+        return $menu;
+    }
+    
+    function _fetchDynamicClientsExtras(){  
+        $menu = [];        
+        if($this->title){
+            $t = __('Extra Actions');
+        }else{
+            $t = null;
+        }       
+        $m_items = [
+            $this->btnGraph,
+            $this->btnApi,
+            //$this->btnMap,
+            //$this->btnAvailable
+        ];      
+      	array_push($m_items,$this->btnUnknownClients);      
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,
+            'items' => $m_items
+        ];    
+        return $menu;  
+    }
+    
+   	private function _fetchBasicVoucher(){
+    
+        $disabled   = false;   
+        $menu       = [];
+    
+        $add = [
+            'xtype' 	=> 'splitbutton',   
+            'glyph' 	=> Configure::read('icnAdd'),    
+            'scale' 	=> $this->scale, 
+            'itemId' 	=> 'add',      
+            'tooltip'	=> __('Add'),
+            'disabled'  => $disabled,
+            'ui'        => $this->btnUiAdd,
+            'menu'      => [
+                    'items' => [
+                        array( 'text'  => __('Single field'),      		'itemId'    => 'addSingle', 'group' => 'add', 'checked' => true ),
+                        array( 'text'  => __('Username and Password'),   'itemId'    => 'addDouble', 'group' => 'add' ,'checked' => false), 
+                        array( 'text'  => __('Import CSV List'),         'itemId'    => 'addCsvList','group' => 'add' ,'checked' => false),  
+                    ]
+            ]
+        ];
+
+        $delete = [
+            'xtype' 	=> 'splitbutton',   
+            'glyph' 	=> Configure::read('icnDelete'),    
+            'scale' 	=> $this->scale, 
+            'itemId' 	=> 'delete',      
+            'tooltip'	=> __('Delete'),
+            'disabled'  => $disabled,
+            'ui'        => $this->btnUiDelete,
+            'menu'      => [
+                    'items' => [
+                        array( 'text'  => __('Simple Delete'), 'itemId'    => 'deleteSimple', 'group' => 'delete', 'checked' => true ),
+                        array( 'text'  => __('Bulk Delete'),   'itemId'    => 'deleteBulk', 'group' => 'delete' ,'checked' => false),  
+                    ]
+            ]
+        ];
+
+
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,
+            'items' => [
+                $this->btnReloadTimer,
+                $add,
+                $delete,
+                $this->btnEdit
+            ]
+        ];
+      
+        return $menu;
+    }
+    
+    private function _fetchDocumentVoucher(){
+        $menu = [];        
+        if($this->title){
+            $t = __('Document');
+        }else{
+            $t = null;
+        }               
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,
+            'items' => [
+                $this->btnPdf,
+                $this->btnCSV,
+                $this->btnMail
+            ]
+        ];
+        return $menu;
+    }
+    
+     private function _fetchVoucherExtras(){  
+        $menu = [];   
+        if($this->title){
+            $t = __('Extra Actions');
+        }else{
+            $t = null;
+        } 
+		$menu = [
+			'xtype' => 'buttongroup',
+			'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+			'items' => [
+			   $this->btnPassword,
+			   $this->btnRadius,
+			   $this->btnGraph
+			]
+		];    
+        return $menu;
+    }
+    
+        
+   	private function _fetchFrAcctAuthBasic(){
+        $menu = [];
+        $menu = [
+                ['xtype' => 'buttongroup','title' => null, 'items' => [
+                    $this->btnReload,
+                   $this->btnDelete, 
+            ]] 
+        ];
+        return $menu;
+    }
+    
+    private function _fetchReload(){
+        return [
+                ['xtype' => 'buttongroup','title' => null, 'items' => [
+                    $this->btnReload
+            ]] 
+        ];
+    }
+    
+    private function _fetchReloadDelete(){
+        return [
+                ['xtype' => 'buttongroup','title' => null, 'items' => [
+                   $this->btnReload,
+                   $this->btnDelete, 
+            ]] 
+        ];
+    }
+       
+     private function _fetchPermanentUserExtras(){
+        $menu = []; 
+        if($this->title){
+            $t = __('Extra Actions');
+        }else{
+            $t = null;
+        } 
+
+         $menu = [
+            'xtype' => 'buttongroup',
+            'title' => $t, 
+            'items' => [
+                [
+                    'xtype'     => 'button', 
+                    'glyph'     => Configure::read('icnEmail'),
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'email', 
+                    'tooltip'   => __('e-Mail Credentials'),
+                    'ui'        => $this->btnUiMail
+               ],
+               $this->btnPassword,
+               //$this->btnEnable,
+               $this->btnAdminState,
+               $this->btnRadius,
+               $this->btnGraph,
+               $this->btnByod,
+               $this->btnTopUp
+            ]
+        ];                   
+        return $menu;
+    }
+    
+    private function _fetchDeviceExtras(){  
+        $menu = [];    
+        if($this->title){
+            $t = __('Extra Actions');
+        }else{
+            $t = null;
+        } 
+		$menu = [
+			'xtype' => 'buttongroup',
+			'title' => $t, 
+			'items' => [
+				$this->btnEnable,
+				$this->btnRadius,
+				$this->btnGraph
+			]
+		];    
+        return $menu;
+    }
+    
+    private function _fetchDynamicDetailExtras(){
+      
+        if($this->title){
+            $t = __('Preview');
+        }else{
+            $t = null;
+        } 
+        $menu = array(
+            'xtype' => 'buttongroup',
+            'title' => $t, 
+            'items' => array(
+                array(
+                    'xtype'     => 'button',  
+                    'glyph'     => Configure::read('icnMobile'),  
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'mobile',    
+                    'tooltip'   => __('Preview')
+                )
+            )
+        );             
+        return $menu;
+    }
+    
+     private function _fetchDynamicDetailDataCollection(){
+    
+        if($this->title){
+            $t = __('Data Collection');
+        }else{
+            $t = null;
+        } 
+    
+        $menu = array(
+            'xtype' => 'buttongroup',
+            'title' => $t,
+           // 'width' => 150, 
+            'items' => [
+                [
+                    'xtype'     => 'button',  
+                    'glyph'     => Configure::read('icnEmail'),  
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'dcEmail',    
+                    'tooltip'   => __('Email Addresses')
+                ],
+                [
+                    'xtype'     => 'button',  
+                    'glyph'     => Configure::read('icnGlobe'),  
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'translate',    
+                    'tooltip'   => __('Translated Phrases')
+                ]
+            ]
+        );             
+        return $menu;
+    }
+    
+  	private function _fetchDynamicTranslations(){       
+        $cmb_options = [
+            'xtype'     => 'cmbDynamicDetailTransOptions',
+            'margin'    => '5 0 5 0',
+            'isRoot'    => true,
+            'itemId'    => 'cmbDynamicDetailTransOptions'  
+        ];  
+        
+        $a = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            [
+                'xtype'         => 'cmbDynamicDetailTransPages',
+                'width'         => 350,
+                'margin'   => '5 0 5 0',
+                'labelWidth'    => 80,
+                'itemId'        => 'tbCmbDynamicDetailTransPages'
+            ],
+            $this->btnReload
+        ]];
+        $b = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            $cmb_options,         
+            $this->btnAdd,
+            $this->btnDelete,
+            $this->btnEdit
+            ]
+	    ];
+	    $c = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+            [
+                'xtype'     => 'button', 
+                'glyph'     => Configure::read('icnGears'), 
+                'scale'     => $this->scale,
+                'itemId'    => 'preview',
+                'tooltip'   =>  __('API Reply Preview'),
+                'ui'        => $this->btnUiProfComp
+            ]                   
+        ]];
+     
+        $menu = [$a,$b,$c];
+        return $menu; 
+    }
+       
+    private function _fetchBasicMeshes(){
+    
+ 
+      	$menu = [];  
+      	$menu = [
+      	    'xtype' => 'buttongroup',
+      	    'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+      	    'items' => [
+                $this->btnReloadTimer,
+                $this->btnAdd,
+                $this->btnDelete,
+				$this->btnEdit,
+				$this->btnView
+            ]
+        ];
+        
+        return $menu;    
+    }
+    
+    private function _fetchExtrasMeshes(){
+    
+        if($this->title){
+            $t = __('Maps');
+        }else{
+            $t = null;
+        } 
+   
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+            'items' => [
+                $this->btnMap,
+                $this->btnBan
+            ]
+        ];             
+        return $menu;
+    }
+    
+     private function _fetchBasicMeshNodes(){
+     
+       	$menu        = [];
+		$menu = [
+		    'xtype' => 'buttongroup',
+		    'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,  
+		    'items' => [
+				$this->btnReloadTimer,
+				$this->btnAdd,
+				$this->btnDelete,
+				$this->btnEdit,
+				$this->btnConfigCall,
+				$this->btnRestart
+			]
+		];
+        return $menu;    
+    }
+    
+    private function _fetchNodeDetails(){
+       
+		$menu = [];
+		$menu = [
+		    'xtype' => 'buttongroup',
+		    'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+		    'items' => [
+				$this->btnReload,
+				$this->btnMap,
+				$this->btnExecute,
+				$this->btnHistory,
+				$this->btnRestart,
+				$this->btnRogue
+			]
+		];
+        return $menu;    
+    }
+             
+  	private function _fetchCrud(){
+		$menu = ['xtype' => 'buttongroup','title' => $this->t, 'items' => [
+				$this->btnReload,
+				$this->btnAdd,
+				$this->btnDelete,
+				$this->btnEdit
+			]
+		];
+        return $menu;    
+    }
+    
+    private function _fetchUnknown(){
+        $menu = [          
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,  
+            'items' => [
+                   $this->btnReloadTimer,
+                   $this->btnAddMesh,
+                   $this->btnAddAp,
+                   $this->btnDelete, 
+                   $this->btnRedirect
+            ]
+        ];
+        return $menu;
+    }
+    
+    private function _fetchAddAndDelete(){
+    
+        $menu = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
+                    $this->btnReload,
+                    $this->btnAdd,
+                    $this->btnDelete,    
+                ]
+        ];
+        return $menu;
+    }
+    
+  	private function _fetchBasicApProfiles(){
+    
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+            'items' => [
+                $this->btnReloadTimer,
+                $this->btnAdd,
+                $this->btnDelete,
+				$this->btnEdit,
+            ]
+        ];       
+        return $menu;    
+    }
+    
+     private function _fetchExtrasApProfiles(){    
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+            'items' => [
+                $this->btnBan
+            ]
+        ];             
+        return $menu;
+    }
+    
+    private function _fetchAps(){
+        
+		$menu = [
+		    'xtype' => 'buttongroup',
+		    'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,   
+		    'items' => [
+				$this->btnReloadTimer,
+				$this->btnAdd,
+				$this->btnDelete,
+				//$this->btnEdit,
+				[
+                    'xtype'     => 'splitbutton',
+                    'glyph'     => Configure::read('icnEdit'),
+                    'scale'     => $this->scale,
+                    'itemId'    => 'edit',
+                    'tooltip'   => __('Edit'),
+                    'ui'        => $this->btnUiEdit,
+                    'menu'      => [
+                        'items' => [
+                            [ 'text'  => __('Basic Edit'),      'itemId'    => 'mnuBasic', 'group' => 'apEdit', 'checked' => true ],
+                            [ 'text'  => __('VPN Connections'), 'itemId'    => 'mnuVpn',   'group' => 'apEdit' ,'checked' => false],
+                            [ 'text'  => __('WiFi Overrides'),  'itemId'    => 'mnuWifi',  'group' => 'apEdit', 'checked' => false]
+                        ]
+                    ]
+                ],
+                [ 'xtype' => 'tbseparator'],
+				$this->btnView,
+				$this->btnExecute,
+				$this->btnConfigCall,
+				$this->btnRestart
+			]
+		];
+        return $menu;    
+    }
+    
+    private function _apStates(){
+        
+		$menu = [
+		    'xtype' => 'buttongroup',
+		    'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,  
+		    'items' => [
+                $this->btnActive,
+				$this->btnSuspend,
+				$this->btnInactive
+			]
+		];
+        return $menu;    
+    }
+    
+   	private function _fetchNas(){
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => $this->t, 
+            'items' => [
+				$this->btnGraph
+            ]
+        ];          
+        return $menu;
+    }
+    
+    private function _fetchCsvUpDown(){
+    
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null, 
+            'width' => 110,
+            'items' => [
+                 [
+                    'xtype'     => 'button',
+                    'glyph'     => Configure::read('icnUpload'),
+                    'scale'     => $this->scale,
+                    'itemId'    => 'upload',
+                    'tooltip'   => __('Upload CSV list'),
+                    'ui'        => 'default'
+                ],
+                [
+                    'xtype'     => 'button',     
+                    'glyph'     => Configure::read('icnCsv'), 
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'csv',      
+                    'tooltip'   => __('Download CSV list'),
+                    'ui'        => $this->btnUiCSV
+                ]                  
+            ]
+        ];       
+        return $menu;    
+    }
+    
+    private function _fetchCsvUpDownPlain(){
+    
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,  
+            'width' => 110,
+            'items' => [
+                 [
+                    'xtype'     => 'button',
+                    'glyph'     => Configure::read('icnUpload'),
+                    'scale'     => $this->scale,
+                    'itemId'    => 'upload',
+                    'tooltip'   => __('Upload CSV list'),
+                    'ui'        => 'default'
+                ],
+                [
+                    'xtype'     => 'button',     
+                    'glyph'     => Configure::read('icnCsv'), 
+                    'scale'     => $this->scale, 
+                    'itemId'    => 'csv',      
+                    'tooltip'   => __('Download CSV list'),
+                    'ui'        => $this->btnUiCSV
+                ]                  
+            ]
+        ];       
+        return $menu;    
+    }
+    
+          
+}

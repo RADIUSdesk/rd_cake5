@@ -1,0 +1,1837 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * MIT License
+ * For full license information, please view the LICENSE file that was distributed with this source code.
+ */
+
+namespace Migrations\Db\Adapter;
+
+use BadMethodCallException;
+use Cake\Database\Schema\TableSchema;
+use Cake\Database\Schema\TableSchemaInterface;
+use InvalidArgumentException;
+use Migrations\Db\AlterInstructions;
+use Migrations\Db\Expression;
+use Migrations\Db\InsertMode;
+use Migrations\Db\Literal;
+use Migrations\Db\Table\CheckConstraint;
+use Migrations\Db\Table\Column;
+use Migrations\Db\Table\ForeignKey;
+use Migrations\Db\Table\Index;
+use Migrations\Db\Table\TableMetadata;
+use Migrations\Db\Table\Trigger;
+use Migrations\Db\Table\View;
+use PDOException;
+use RuntimeException;
+use const FILTER_VALIDATE_BOOLEAN;
+
+/**
+ * Migrations SQLite Adapter.
+ */
+class SqliteAdapter extends AbstractAdapter
+{
+    public const MEMORY = ':memory:';
+
+    /**
+     * List of supported column types with their SQL equivalents
+     * some types have an affinity appended to ensure they do not receive NUMERIC affinity
+     *
+     * @var string[]
+     */
+    protected static array $supportedColumnTypes = [
+        self::TYPE_BIGINTEGER => 'biginteger',
+        self::TYPE_BINARY => 'binary_blob',
+        self::TYPE_BINARY_UUID => 'uuid_blob',
+        self::TYPE_BOOLEAN => 'boolean_integer',
+        self::TYPE_CHAR => 'char',
+        self::TYPE_DATE => 'date_text',
+        self::TYPE_DATETIME => 'datetime_text',
+        self::TYPE_DECIMAL => 'decimal',
+        self::TYPE_FLOAT => 'float',
+        self::TYPE_INTEGER => 'integer',
+        self::TYPE_JSON => 'json_text',
+        self::TYPE_SMALLINTEGER => 'smallinteger',
+        self::TYPE_STRING => 'varchar',
+        self::TYPE_TEXT => 'text',
+        self::TYPE_TIME => 'time_text',
+        self::TYPE_TIMESTAMP => 'timestamp_text',
+        self::TYPE_TINYINTEGER => 'tinyinteger',
+        self::TYPE_UUID => 'uuid_text',
+    ];
+
+    protected string $suffix = '.sqlite3';
+
+    /**
+     * Indicates whether the database library version is at least the specified version
+     *
+     * @param string $ver The version to check against e.g. '3.28.0'
+     * @return bool
+     */
+    public function databaseVersionAtLeast(string $ver): bool
+    {
+        $actual = $this->query('SELECT sqlite_version()')->fetchColumn(0);
+
+        return version_compare($actual, $ver, '>=');
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function setOptions(array $options): AdapterInterface
+    {
+        parent::setOptions($options);
+
+        if (isset($options['suffix'])) {
+            $this->suffix = $options['suffix'];
+        }
+        //don't "fix" the file extension if it is blank, some people
+        //might want a SQLITE db file with absolutely no extension.
+        if ($this->suffix !== '' && !str_starts_with($this->suffix, '.')) {
+            $this->suffix = '.' . $this->suffix;
+        }
+
+        return $this;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function quoteTableName($tableName): string
+    {
+        $driver = $this->getConnection()->getDriver();
+
+        return $driver->quoteIdentifier($tableName);
+    }
+
+    /**
+     * Generates a regular expression to match identifiers that may or
+     * may not be quoted with any of the supported quotes.
+     *
+     * @param string $identifier The identifier to match.
+     * @param bool $spacedNoQuotes Whether the non-quoted identifier requires to be surrounded by whitespace.
+     * @return string
+     */
+    protected function possiblyQuotedIdentifierRegex(string $identifier, bool $spacedNoQuotes = true): string
+    {
+        $identifiers = [];
+        $identifier = preg_quote($identifier, '/');
+
+        $hasTick = str_contains($identifier, '`');
+        $hasDoubleQuote = str_contains($identifier, '"');
+        $hasSingleQuote = str_contains($identifier, "'");
+
+        $identifiers[] = '\[' . $identifier . '\]';
+        $identifiers[] = '`' . ($hasTick ? str_replace('`', '``', $identifier) : $identifier) . '`';
+        $identifiers[] = '"' . ($hasDoubleQuote ? str_replace('"', '""', $identifier) : $identifier) . '"';
+        $identifiers[] = "'" . ($hasSingleQuote ? str_replace("'", "''", $identifier) : $identifier) . "'";
+
+        if (!$hasTick && !$hasDoubleQuote && !$hasSingleQuote) {
+            $identifiers[] = $spacedNoQuotes ? sprintf('\s+%s\s+', $identifier) : $identifier;
+        }
+
+        return '(' . implode('|', $identifiers) . ')';
+    }
+
+    /**
+     * @param string $tableName Table name
+     * @param bool $quoted Whether to return the schema name and table name escaped and quoted. If quoted, the schema (if any) will also be appended with a dot
+     * @return array
+     */
+    protected function getSchemaName(string $tableName, bool $quoted = false): array
+    {
+        if (preg_match("/.\.([^\.]+)$/", $tableName, $match)) {
+            $table = $match[1];
+            $schema = substr($tableName, 0, strlen($tableName) - strlen($match[0]) + 1);
+            $result = ['schema' => $schema, 'table' => $table];
+        } else {
+            $result = ['schema' => '', 'table' => $tableName];
+        }
+
+        if ($quoted) {
+            $result['schema'] = $result['schema'] !== '' ? $this->quoteColumnName($result['schema']) . '.' : '';
+            $result['table'] = $this->quoteColumnName($result['table']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Searches through all available schemata to find a table and returns an array
+     * containing the bare schema name and whether the table exists at all.
+     * If no schema was specified and the table does not exist the "main" schema is returned
+     *
+     * @param string $tableName The name of the table to find
+     * @return array
+     */
+    protected function resolveTable(string $tableName): array
+    {
+        $info = $this->getSchemaName($tableName);
+        if ($info['schema'] === '') {
+            // if no schema is specified we search all schemata
+            $rows = $this->fetchAll('PRAGMA database_list;');
+            // the temp schema is always first to be searched
+            $schemata = ['temp'];
+            foreach ($rows as $row) {
+                if (strtolower((string)$row['name']) !== 'temp') {
+                    $schemata[] = $row['name'];
+                }
+            }
+            $defaultSchema = 'main';
+        } else {
+            // otherwise we search just the specified schema
+            $schemata = (array)$info['schema'];
+            $defaultSchema = $info['schema'];
+        }
+
+        $table = strtolower((string)$info['table']);
+        foreach ($schemata as $schema) {
+            if (strtolower((string)$schema) === 'temp') {
+                $master = 'sqlite_temp_master';
+            } else {
+                $master = sprintf('%s.%s', $this->quoteColumnName($schema), 'sqlite_master');
+            }
+            $rows = [];
+            try {
+                $result = $this->query(
+                    sprintf("SELECT name FROM %s WHERE type = 'table' AND lower(name) = ?", $master),
+                    [$table],
+                );
+                // null on error
+                if ($result !== null) {
+                    $rows = $result->fetchAll('assoc');
+                }
+            } catch (PDOException) {
+                // an exception can occur if the schema part of the table refers to a database which is not attached
+                break;
+            }
+
+            // this somewhat pedantic check with strtolower is performed because the SQL lower function may be redefined,
+            // and can act on all Unicode characters if the ICU extension is loaded, while SQL identifiers are only case-insensitive for ASCII
+            foreach ($rows as $row) {
+                if (strtolower((string)$row['name']) === $table) {
+                    return ['schema' => $schema, 'table' => $row['name'], 'exists' => true];
+                }
+            }
+        }
+
+        return ['schema' => $defaultSchema, 'table' => $info['table'], 'exists' => false];
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function hasTable(string $tableName): bool
+    {
+        // Only use the cache in dry-run mode where tables aren't actually created.
+        // In normal mode, always check the database to handle cases where tables
+        // are dropped via execute() which doesn't update the cache.
+        if ($this->isDryRunEnabled() && $this->hasCreatedTable($tableName)) {
+            return true;
+        }
+
+        return $this->resolveTable($tableName)['exists'];
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function createTable(TableMetadata $table, array $columns = [], array $indexes = []): void
+    {
+        // Add the default primary key
+        $options = $table->getOptions();
+        if (!isset($options['id']) || ($options['id'] === true)) {
+            $options['id'] = 'id';
+        }
+
+        if (is_string($options['id'])) {
+            // Handle id => "field_name" to support AUTO_INCREMENT
+            $column = new Column();
+            $column->setName($options['id'])
+                   ->setType('integer')
+                   ->setOptions(['identity' => true]);
+
+            array_unshift($columns, $column);
+        }
+
+        $sql = 'CREATE TABLE ';
+        $sql .= $this->quoteTableName($table->getName()) . ' (';
+        if (isset($options['primary_key'])) {
+            $options['primary_key'] = (array)$options['primary_key'];
+        }
+        $dialect = $this->getSchemaDialect();
+
+        foreach ($columns as $column) {
+            $columnData = $column->toArray();
+            $sql .= $dialect->columnDefinitionSql($columnData) . ', ';
+            if (isset($options['primary_key']) && $column->getIdentity()) {
+                //remove column from the primary key array as it is already defined as an autoincrement
+                //primary id
+                $identityColumnIndex = array_search($column->getName(), $options['primary_key'], true);
+                if ($identityColumnIndex !== false) {
+                    unset($options['primary_key'][$identityColumnIndex]);
+
+                    if (empty($options['primary_key'])) {
+                        //The last primary key has been removed
+                        unset($options['primary_key']);
+                    }
+                }
+            }
+        }
+
+        // set the primary key(s)
+        if (isset($options['primary_key'])) {
+            $sql = rtrim($sql);
+            $sql .= ' PRIMARY KEY (';
+            if (is_string($options['primary_key'])) { // handle primary_key => 'id'
+                $sql .= $this->quoteColumnName($options['primary_key']);
+            } elseif (is_array($options['primary_key'])) { // handle primary_key => array('tag_id', 'resource_id')
+                $sql .= implode(',', array_map($this->quoteColumnName(...), $options['primary_key']));
+            }
+            $sql .= ')';
+        } else {
+            $sql = substr(rtrim($sql), 0, -1); // no primary keys
+        }
+
+        $sql = rtrim($sql) . ');';
+        // execute the sql
+        $this->execute($sql);
+
+        foreach ($indexes as $index) {
+            $this->addIndex($table, $index);
+        }
+
+        $this->addCreatedTable($table->getName());
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws \InvalidArgumentException
+     */
+    protected function getChangePrimaryKeyInstructions(TableMetadata $table, $newColumns): AlterInstructions
+    {
+        $instructions = new AlterInstructions();
+
+        // Drop the existing primary key
+        $primaryKey = $this->getPrimaryKey($table->getName());
+        if ($primaryKey) {
+            $instructions->merge(
+                // FIXME: array access is a hack to make this incomplete implementation work with a correct getPrimaryKey implementation
+                $this->getDropPrimaryKeyInstructions($table, $primaryKey[0]),
+            );
+        }
+
+        // Add the primary key(s)
+        if ($newColumns) {
+            if (!is_string($newColumns)) {
+                throw new InvalidArgumentException(sprintf(
+                    'Invalid value for primary key: %s',
+                    json_encode($newColumns),
+                ));
+            }
+
+            $instructions->merge(
+                $this->getAddPrimaryKeyInstructions($table, $newColumns),
+            );
+        }
+
+        return $instructions;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * SQLiteAdapter does not implement this functionality, and so will always throw an exception if used.
+     *
+     * @throws \BadMethodCallException
+     */
+    protected function getChangeCommentInstructions(TableMetadata $table, $newComment): AlterInstructions
+    {
+        throw new BadMethodCallException('SQLite does not have table comments');
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getRenameTableInstructions(string $tableName, string $newTableName): AlterInstructions
+    {
+        $this->updateCreatedTableName($tableName, $newTableName);
+        $sql = sprintf(
+            'ALTER TABLE %s RENAME TO %s',
+            $this->quoteTableName($tableName),
+            $this->quoteTableName($newTableName),
+        );
+
+        return new AlterInstructions([], [$sql]);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getDropTableInstructions(string $tableName): AlterInstructions
+    {
+        $this->removeCreatedTable($tableName);
+        $sql = sprintf('DROP TABLE %s', $this->quoteTableName($tableName));
+
+        return new AlterInstructions([], [$sql]);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function truncateTable(string $tableName): void
+    {
+        $info = $this->resolveTable($tableName);
+        // first try deleting the rows
+        $this->execute(sprintf(
+            'DELETE FROM %s.%s',
+            $this->quoteColumnName($info['schema']),
+            $this->quoteColumnName($info['table']),
+        ));
+
+        // assuming no error occurred, reset the autoincrement (if any)
+        if ($this->hasTable($info['schema'] . '.sqlite_sequence')) {
+            $sql = sprintf(
+                'DELETE FROM %s.sqlite_sequence where name = ?',
+                $this->quoteColumnName($info['schema']),
+            );
+            $this->execute($sql, [$info['table']]);
+        }
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function disableForeignKeyConstraints(): void
+    {
+        $this->execute('PRAGMA foreign_keys = OFF');
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function enableForeignKeyConstraints(): void
+    {
+        $this->execute('PRAGMA foreign_keys = ON');
+    }
+
+    /**
+     * Parses a default-value expression to yield either a Literal representing
+     * a string value, a string representing an expression, or some other scalar
+     *
+     * @param mixed $default The default-value expression to interpret
+     * @param string $columnType The type of the column
+     * @return mixed
+     */
+    protected function parseDefaultValue(mixed $default, string $columnType): mixed
+    {
+        if (!is_string($default)) {
+            return $default;
+        }
+
+        // split the input into tokens
+        $trimChars = " \t\n\r\0\x0B";
+        $pattern = <<<PCRE_PATTERN
+            /
+                '(?:[^']|'')*'|                 # String literal
+                "(?:[^"]|"")*"|                 # Standard identifier
+                `(?:[^`]|``)*`|                 # MySQL identifier
+                \[[^\]]*\]|                     # SQL Server identifier
+                --[^\r\n]*|                     # Single-line comment
+                \/\*(?:\*(?!\/)|[^\*])*\*\/|    # Multi-line comment
+                [^\/\-]+|                       # Non-special characters
+                .                               # Any other single character
+            /sx
+PCRE_PATTERN;
+        preg_match_all($pattern, $default, $matches);
+        // strip out any comment tokens
+        $matches = array_map(function (string $v): string {
+            return preg_match('/^(?:\/\*|--)/', $v) ? ' ' : $v;
+        }, $matches[0]);
+        // reconstitute the string, trimming whitespace as well as parentheses
+        $defaultClean = trim(implode('', $matches));
+        $defaultBare = rtrim(ltrim($defaultClean, $trimChars . '('), $trimChars . ')');
+        // match the string against one of several patterns
+        if ($columnType === TableSchemaInterface::TYPE_TEXT || $columnType === TableschemaInterface::TYPE_STRING) {
+            // string literal
+            return Literal::from($default);
+        }
+        if ($columnType === TableSchemaInterface::TYPE_BOOLEAN) {
+            // boolean literal
+            return (int)filter_var($defaultClean, FILTER_VALIDATE_BOOLEAN);
+        }
+        if (preg_match('/^CURRENT_(?:DATE|TIME|TIMESTAMP)$/i', $default)) {
+            // magic date or time
+            return strtoupper($default);
+        }
+        if (preg_match('/^[+-]?\d+$/i', $default)) {
+            $int = (int)$default;
+            // integer literal
+            if ($columnType === self::TYPE_BOOLEAN && ($int === 0 || $int === 1)) {
+                return (bool)$int;
+            }
+
+            return $int;
+        }
+        if (preg_match('/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i', $default)) {
+            // float literal
+            return (float)$default;
+        }
+        if (preg_match('/^0x[0-9a-f]+$/i', $default)) {
+            // hexadecimal literal
+            return hexdec(substr($default, 2));
+        }
+
+        // match the string against one of several patterns
+        if (preg_match('/^null$/i', $defaultBare)) {
+            // null literal
+            return null;
+        }
+        // any other expression: return the expression with parentheses, but without comments
+        return Expression::from($default);
+    }
+
+    /**
+     * Returns the name of the specified table's identity column, or null if the table has no identity
+     *
+     * The process of finding an identity column is somewhat convoluted as SQLite has no direct way of querying whether a given column is an alias for the table's row ID
+     *
+     * @param string $tableName The name of the table
+     * @return string|null
+     */
+    protected function resolveIdentity(string $tableName): ?string
+    {
+        $result = null;
+        // make sure the table has only one primary key column which is of type integer
+        foreach ($this->getColumnData($tableName) as $col) {
+            $type = strtolower((string)$col['type']);
+            if ($col['pk'] > 1) {
+                // the table has a composite primary key
+                return null;
+            }
+            if ($col['pk'] == 0) {
+                // the column is not a primary key column and is thus not relevant
+                continue;
+            }
+            if ($type !== 'integer') {
+                // if the primary key's type is not exactly INTEGER, it cannot be a row ID alias
+                return null;
+            }
+            // the column is a candidate for a row ID alias
+            $result = $col['name'];
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get column metadata
+     *
+     * @param string $tableName The table to get column data from.
+     * @return array
+     */
+    protected function getColumnData(string $tableName): array
+    {
+        $dialect = $this->getSchemaDialect();
+
+        return $dialect->describeColumns($tableName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getColumns(string $tableName): array
+    {
+        $columns = [];
+        foreach ($this->getColumnData($tableName) as $columnInfo) {
+            $default = $this->parseDefaultValue($columnInfo['default'], $columnInfo['type']);
+            $column = new Column();
+            $column
+                ->setName($columnInfo['name'])
+                ->setType($columnInfo['type'])
+                ->setNull($columnInfo['null'])
+                ->setDefault($default)
+                ->setLimit($columnInfo['length'])
+                // cakephp uses precision not scale
+                ->setScale($columnInfo['precision'] ?? null)
+                ->setComment($columnInfo['comment'])
+                ->setIdentity($columnInfo['autoIncrement'] ?? false);
+
+            $columns[] = $column;
+        }
+
+        return $columns;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getAddColumnInstructions(TableMetadata $table, Column $column): AlterInstructions
+    {
+        $tableName = $table->getName();
+
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function (array $state) use ($tableName, $column): array {
+            // we use the final column to anchor our regex to insert the new column,
+            // as the alternative is unwinding all possible table constraints which
+            // gets messy quickly with CHECK constraints.
+            $columns = $this->getColumns($tableName);
+            $dialect = $this->getSchemaDialect();
+            if (!$columns) {
+                return $state;
+            }
+            $finalColumnName = end($columns)->getName();
+            $sql = (string)preg_replace(
+                sprintf(
+                    "/(%s(?:\/\*.*?\*\/|\([^)]+\)|'[^']*?'|[^,])+)([,)])/",
+                    $this->quoteColumnName((string)$finalColumnName),
+                ),
+                sprintf(
+                    '$1, %s$2',
+                    $dialect->columnDefinitionSql($column->toArray()),
+                ),
+                (string)$state['createSQL'],
+                1,
+            );
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function ($state) use ($tableName): array {
+            $newState = $this->calculateNewTableColumns($tableName, false, false);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * Returns the original CREATE statement for the give table
+     *
+     * @param string $tableName The table name to get the create statement for
+     * @return string
+     */
+    protected function getDeclaringSql(string $tableName): string
+    {
+        $rows = $this->fetchAll("SELECT * FROM sqlite_master WHERE \"type\" = 'table'");
+
+        $sql = '';
+        foreach ($rows as $table) {
+            if ($table['tbl_name'] === $tableName) {
+                $sql = $table['sql'];
+            }
+        }
+
+        $columnsInfo = $this->getColumnData($tableName);
+        foreach ($columnsInfo as $column) {
+            $columnName = preg_quote((string)$column['name'], '#');
+            $columnNamePattern = sprintf('"%s"|`%s`|\[%s\]|%s', $columnName, $columnName, $columnName, $columnName);
+            $columnNamePattern = sprintf('#([\(,]+\s*)(%s)(\s)#iU', $columnNamePattern);
+
+            $sql = (string)preg_replace_callback(
+                $columnNamePattern,
+                function (array $matches) use ($column): string {
+                    return $matches[1] . $this->quoteColumnName($column['name']) . $matches[3];
+                },
+                (string)$sql,
+            );
+        }
+
+        $tableNamePattern = sprintf('"%s"|`%s`|\[%s\]|%s', $tableName, $tableName, $tableName, $tableName);
+        $tableNamePattern = sprintf('#^(CREATE TABLE)\s*(%s)\s*(\()#Ui', $tableNamePattern);
+
+        return (string)preg_replace($tableNamePattern, sprintf('$1 `%s` $3', $tableName), $sql, 1);
+    }
+
+    /**
+     * Returns the original CREATE statement for the give index
+     *
+     * @param string $tableName The table name to get the create statement for
+     * @param string $indexName The table index
+     * @return string
+     */
+    protected function getDeclaringIndexSql(string $tableName, string $indexName): string
+    {
+        $rows = $this->fetchAll("SELECT * FROM sqlite_master WHERE \"type\" = 'index'");
+
+        $sql = '';
+        foreach ($rows as $table) {
+            if ($table['tbl_name'] === $tableName && $table['name'] === $indexName) {
+                $sql = $table['sql'] . '; ';
+            }
+        }
+
+        return $sql;
+    }
+
+    /**
+     * Obtains index and trigger information for a table.
+     *
+     * They will be stored in the state as arrays under the `indices` and `triggers`
+     * keys accordingly.
+     *
+     * Index columns defined as expressions, as for example in `ON (ABS(id), other)`,
+     * will appear as `null`, so for the given example the columns for the index would
+     * look like `[null, 'other']`.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to modify
+     * @param string $tableName The name of table being processed
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function bufferIndicesAndTriggers(AlterInstructions $instructions, string $tableName): AlterInstructions
+    {
+        $instructions->addPostStep(function (array $state) use ($tableName): array {
+            $state['indices'] = [];
+            $state['triggers'] = [];
+
+            $query = $this->getSelectBuilder()
+                ->select('*')
+                ->from('sqlite_master')
+                ->where([
+                    'type IN' => ['index', 'trigger'],
+                    'tbl_name' => $tableName,
+                    'sql IS NOT' => null,
+                ]);
+            $rows = $query->execute()->fetchAll('assoc');
+
+            $indexes = $this->getIndexes($tableName);
+            $indexMap = [];
+            foreach ($indexes as $index) {
+                $indexMap[$index['name']] = $index;
+            }
+
+            foreach ($rows as $row) {
+                switch ($row['type']) {
+                    case 'index':
+                        $info = $indexMap[$row['name']];
+                        $columns = array_map(
+                            function ($column) {
+                                if ($column === null) {
+                                    return null;
+                                }
+
+                                return strtolower($column);
+                            },
+                            $info['columns'],
+                        );
+                        $hasExpressions = in_array(null, $columns, true);
+
+                        $index = [
+                            'columns' => $columns,
+                            'hasExpressions' => $hasExpressions,
+                        ];
+
+                        $state['indices'][] = $index + $row;
+                        break;
+
+                    case 'trigger':
+                        $state['triggers'][] = $row;
+                        break;
+                }
+            }
+
+            return $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Filters out indices that reference a removed column.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to modify
+     * @param string $columnName The name of the removed column
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function filterIndicesForRemovedColumn(
+        AlterInstructions $instructions,
+        string $columnName,
+    ): AlterInstructions {
+        $instructions->addPostStep(function (array $state) use ($columnName): array {
+            foreach ($state['indices'] as $key => $index) {
+                if (
+                    !$index['hasExpressions'] &&
+                    in_array(strtolower($columnName), $index['columns'], true)
+                ) {
+                    unset($state['indices'][$key]);
+                }
+            }
+
+            return $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Updates indices that reference a renamed column.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to modify
+     * @param string $oldColumnName The old column name
+     * @param string $newColumnName The new column name
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function updateIndicesForRenamedColumn(
+        AlterInstructions $instructions,
+        string $oldColumnName,
+        string $newColumnName,
+    ): AlterInstructions {
+        $instructions->addPostStep(function (array $state) use ($oldColumnName, $newColumnName): array {
+            foreach ($state['indices'] as $key => $index) {
+                if (
+                    !$index['hasExpressions'] &&
+                    in_array(strtolower($oldColumnName), $index['columns'], true)
+                ) {
+                    $pattern = '
+                        /
+                            (INDEX.+?ON\s.+?)
+                                (\(\s*|,\s*)        # opening parenthesis or comma
+                                (?:`|"|\[)?         # optional opening quote
+                                (%s)                # column name
+                                (?:`|"|\])?         # optional closing quote
+                                (\s+COLLATE\s+.+?)? # optional collation
+                                (\s+(?:ASC|DESC))?  # optional order
+                                (\s*,|\s*\))        # comma or closing parenthesis
+                        /isx';
+
+                    $newColumnName = $this->quoteColumnName($newColumnName);
+
+                    $state['indices'][$key]['sql'] = preg_replace(
+                        sprintf($pattern, preg_quote($oldColumnName, '/')),
+                        sprintf('\1\2%s\4\5\6', $newColumnName),
+                        (string)$index['sql'],
+                    );
+                }
+            }
+
+            return $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Recreates indices and triggers.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to process
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function recreateIndicesAndTriggers(AlterInstructions $instructions): AlterInstructions
+    {
+        $instructions->addPostStep(function (array $state): array {
+            foreach ($state['indices'] as $index) {
+                $this->execute($index['sql']);
+            }
+
+            foreach ($state['triggers'] as $trigger) {
+                $this->execute($trigger['sql']);
+            }
+
+            return $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Returns instructions for validating the foreign key constraints of
+     * the given table, and of those tables whose constraints are
+     * targeting it.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to process
+     * @param string $tableName The name of the table for which to check constraints.
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function validateForeignKeys(AlterInstructions $instructions, string $tableName): AlterInstructions
+    {
+        $instructions->addPostStep(function ($state) use ($tableName) {
+            $tablesToCheck = [
+                $tableName,
+            ];
+
+            $otherTables = $this
+                ->query(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name != ?",
+                    [$tableName],
+                )
+                ->fetchAll('assoc');
+
+            foreach ($otherTables as $otherTable) {
+                $foreignKeyList = $this->getForeignKeys($otherTable['name']);
+                foreach ($foreignKeyList as $foreignKey) {
+                    if (strcasecmp((string)$foreignKey['references'][0], $tableName) === 0) {
+                        $tablesToCheck[] = $otherTable['name'];
+                        break;
+                    }
+                }
+            }
+
+            $tablesToCheck = array_unique(array_map(strtolower(...), $tablesToCheck));
+
+            foreach ($tablesToCheck as $tableToCheck) {
+                $schema = $this->getSchemaName($tableToCheck, true)['schema'];
+
+                $stmt = $this->query(
+                    sprintf('PRAGMA %sforeign_key_check(%s)', $schema, $this->quoteTableName($tableToCheck)),
+                );
+                $row = $stmt->fetch();
+                $stmt->closeCursor();
+
+                if (is_array($row)) {
+                    throw new RuntimeException(sprintf(
+                        'Integrity constraint violation: FOREIGN KEY constraint on `%s` failed.',
+                        $tableToCheck,
+                    ));
+                }
+            }
+
+            return $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Copies all the data from a tmp table to another table
+     *
+     * @param string $tableName The table name to copy the data to
+     * @param string $tmpTableName The tmp table name where the data is stored
+     * @param string[] $writeColumns The list of columns in the target table
+     * @param string[] $selectColumns The list of columns in the tmp table
+     * @return void
+     */
+    protected function copyDataToNewTable(string $tableName, string $tmpTableName, array $writeColumns, array $selectColumns): void
+    {
+        $sql = sprintf(
+            'INSERT INTO %s(%s) SELECT %s FROM %s',
+            $this->quoteTableName($tableName),
+            implode(', ', $writeColumns),
+            implode(', ', $selectColumns),
+            $this->quoteTableName($tmpTableName),
+        );
+        $this->execute($sql);
+    }
+
+    /**
+     * Modifies the passed instructions to copy all data from the table into
+     * the provided tmp table and then drops the table and rename tmp table.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to modify
+     * @param string $tableName The table name to copy the data to
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function copyAndDropTmpTable(AlterInstructions $instructions, string $tableName): AlterInstructions
+    {
+        $instructions->addPostStep(function (array $state) use ($tableName): array {
+            $this->copyDataToNewTable(
+                $state['tmpTableName'],
+                $tableName,
+                $state['writeColumns'],
+                $state['selectColumns'],
+            );
+
+            $this->execute(sprintf('DROP TABLE %s', $this->quoteTableName($tableName)));
+            $this->execute(sprintf(
+                'ALTER TABLE %s RENAME TO %s',
+                $this->quoteTableName($state['tmpTableName']),
+                $this->quoteTableName($tableName),
+            ));
+
+            return $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Returns the columns and type to use when copying a table to another in the process
+     * of altering a table
+     *
+     * @param string $tableName The table to modify
+     * @param string|false $columnName The column name that is about to change
+     * @param string|false $newColumnName Optionally the new name for the column
+     * @throws \InvalidArgumentException
+     * @return array
+     */
+    protected function calculateNewTableColumns(string $tableName, string|false $columnName, string|false $newColumnName): array
+    {
+        $columns = $this->getColumnData($tableName);
+        /** @var array<string> $selectColumns */
+        $selectColumns = [];
+        /** @var array<string> $writeColumns */
+        $writeColumns = [];
+        $columnType = null;
+        $found = false;
+
+        foreach ($columns as $column) {
+            $selectName = $column['name'];
+            $writeName = $selectName;
+
+            if ($selectName === $columnName) {
+                $writeName = $newColumnName;
+                $found = true;
+                $columnType = $column['type'];
+                $selectName = $newColumnName === false ? $newColumnName : $selectName;
+            }
+
+            if ($selectName) {
+                $selectColumns[] = $selectName;
+            }
+            if ($writeName) {
+                $writeColumns[] = $writeName;
+            }
+        }
+        $selectColumns = array_filter($selectColumns, fn($value): bool => $value !== '');
+        $writeColumns = array_filter($writeColumns, fn($value): bool => $value !== '');
+        $selectColumns = array_map($this->quoteColumnName(...), $selectColumns);
+        $writeColumns = array_map($this->quoteColumnName(...), $writeColumns);
+
+        if ($columnName && !$found) {
+            throw new InvalidArgumentException(sprintf(
+                "The specified column doesn't exist: %s",
+                $columnName,
+            ));
+        }
+
+        return compact('writeColumns', 'selectColumns', 'columnType');
+    }
+
+    /**
+     * Returns the initial instructions to alter a table using the
+     * create-copy-drop strategy
+     *
+     * @param string $tableName The table to modify
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function beginAlterByCopyTable(string $tableName): AlterInstructions
+    {
+        $instructions = new AlterInstructions();
+        $instructions->addPostStep(function ($state) use ($tableName): array {
+            $tmpTableName = 'tmp_' . $tableName;
+            $createSQL = $this->getDeclaringSql($tableName);
+
+            // Table name in SQLite can be hilarious inside declaring SQL:
+            // - tableName
+            // - `tableName`
+            // - "tableName"
+            // - [this is a valid table name too!]
+            // - etc.
+            // Just remove all characters before first "(" and build them again
+            $createSQL = preg_replace(
+                "/^CREATE TABLE .* \(/Ui",
+                '',
+                $createSQL,
+            );
+
+            $createSQL = sprintf('CREATE TABLE %s (%s', $this->quoteTableName($tmpTableName), $createSQL);
+
+            return compact('createSQL', 'tmpTableName') + $state;
+        });
+
+        return $instructions;
+    }
+
+    /**
+     * Returns the final instructions to alter a table using the
+     * create-copy-drop strategy.
+     *
+     * @param \Migrations\Db\AlterInstructions $instructions The instructions to modify
+     * @param string $tableName The name of table being processed
+     * @param ?string $renamedOrRemovedColumnName The name of the renamed or removed column when part of a column
+     *  rename/drop operation.
+     * @param ?string $newColumnName The new column name when part of a column rename operation.
+     * @param bool $validateForeignKeys Whether to validate foreign keys after the copy and drop operations. Note that
+     *  enabling this option only has an effect when the `foreign_keys` PRAGMA is set to `ON`!
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function endAlterByCopyTable(
+        AlterInstructions $instructions,
+        string $tableName,
+        ?string $renamedOrRemovedColumnName = null,
+        ?string $newColumnName = null,
+        bool $validateForeignKeys = true,
+    ): AlterInstructions {
+        $instructions = $this->bufferIndicesAndTriggers($instructions, $tableName);
+
+        if ($renamedOrRemovedColumnName !== null) {
+            if ($newColumnName !== null) {
+                $this->updateIndicesForRenamedColumn($instructions, $renamedOrRemovedColumnName, $newColumnName);
+            } else {
+                $this->filterIndicesForRemovedColumn($instructions, $renamedOrRemovedColumnName);
+            }
+        }
+
+        $result = $this->fetchRow('PRAGMA foreign_keys');
+        $foreignKeysEnabled = $result && (bool)$result['foreign_keys'];
+
+        if ($foreignKeysEnabled) {
+            $instructions->addPostStep('PRAGMA foreign_keys = OFF');
+        }
+
+        $instructions = $this->copyAndDropTmpTable($instructions, $tableName);
+        $instructions = $this->recreateIndicesAndTriggers($instructions);
+
+        if ($foreignKeysEnabled) {
+            $instructions->addPostStep('PRAGMA foreign_keys = ON');
+        }
+
+        if (
+            $foreignKeysEnabled &&
+            $validateForeignKeys
+        ) {
+            return $this->validateForeignKeys($instructions, $tableName);
+        }
+
+        return $instructions;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getRenameColumnInstructions(string $tableName, string $columnName, string $newColumnName): AlterInstructions
+    {
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function (array $state) use ($columnName, $newColumnName): array {
+            $sql = str_replace(
+                $this->quoteColumnName($columnName),
+                $this->quoteColumnName($newColumnName),
+                (string)$state['createSQL'],
+            );
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function ($state) use ($columnName, $newColumnName, $tableName): array {
+            $newState = $this->calculateNewTableColumns($tableName, $columnName, $newColumnName);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName, $columnName, $newColumnName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getChangeColumnInstructions(string $tableName, string $columnName, Column $newColumn): AlterInstructions
+    {
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $newColumnName = $newColumn->getName();
+        $instructions->addPostStep(function (array $state) use ($columnName, $newColumn): array {
+            $dialect = $this->getSchemaDialect();
+            $sql = (string)preg_replace(
+                sprintf("/%s(?:\/\*.*?\*\/|\([^)]+\)|'[^']*?'|[^,])+([,)])/", $this->quoteColumnName($columnName)),
+                sprintf('%s$1', $dialect->columnDefinitionSql($newColumn->toArray())),
+                (string)$state['createSQL'],
+                1,
+            );
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function ($state) use ($columnName, $newColumnName, $tableName): array {
+            $newState = $this->calculateNewTableColumns($tableName, $columnName, $newColumnName);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getDropColumnInstructions(string $tableName, string $columnName): AlterInstructions
+    {
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function ($state) use ($tableName, $columnName): array {
+            $newState = $this->calculateNewTableColumns($tableName, $columnName, false);
+
+            return $newState + $state;
+        });
+
+        $instructions->addPostStep(function (array $state) use ($columnName): array {
+            $sql = (string)preg_replace(
+                sprintf("/%s\s\w+.*(,\s(?!')|\)$)/U", preg_quote($this->quoteColumnName($columnName))),
+                '',
+                (string)$state['createSQL'],
+            );
+
+            if (str_ends_with($sql, ', ')) {
+                $sql = substr($sql, 0, -2) . ')';
+            }
+
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName, $columnName);
+    }
+
+    /**
+     * Get an array of indexes from a particular table.
+     *
+     * @param string $tableName Table name
+     * @return array
+     */
+    protected function getIndexes(string $tableName): array
+    {
+        $dialect = $this->getSchemaDialect();
+
+        return $dialect->describeIndexes($tableName);
+    }
+
+    /**
+     * Finds the names of a table's indexes matching the supplied columns
+     *
+     * @param string $tableName The table to which the index belongs
+     * @param string|string[] $columns The columns of the index
+     * @return array
+     */
+    protected function resolveIndex(string $tableName, string|array $columns): array
+    {
+        $columns = array_map(strtolower(...), (array)$columns);
+        $indexes = $this->getIndexes($tableName);
+        $matches = [];
+
+        foreach ($indexes as $index) {
+            $indexCols = array_map(strtolower(...), $index['columns']);
+            if ($columns == $indexCols) {
+                $matches[] = $index['name'];
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getAddIndexInstructions(TableMetadata $table, Index $index): AlterInstructions
+    {
+        $indexColumnArray = [];
+        foreach ((array)$index->getColumns() as $column) {
+            $indexColumnArray[] = sprintf('%s ASC', $this->quoteColumnName($column));
+        }
+        $indexColumns = implode(',', $indexColumnArray);
+        $where = '';
+        $whereClause = $index->getWhere();
+        if ($whereClause) {
+            $where = ' WHERE ' . $whereClause;
+        }
+        $sql = sprintf(
+            'CREATE %s ON %s (%s)%s',
+            $this->getIndexSqlDefinition($table, $index),
+            $this->quoteTableName($table->getName()),
+            $indexColumns,
+            $where,
+        );
+
+        return new AlterInstructions([], [$sql]);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getDropIndexByColumnsInstructions(string $tableName, $columns): AlterInstructions
+    {
+        $instructions = new AlterInstructions();
+        $indexNames = $this->resolveIndex($tableName, $columns);
+        $schema = $this->getSchemaName($tableName, true)['schema'];
+        foreach ($indexNames as $indexName) {
+            // Skip the implicit primary key that is reflected.
+            if ($indexName === 'primary') {
+                continue;
+            }
+            if (!str_starts_with((string)$indexName, 'sqlite_autoindex_')) {
+                $instructions->addPostStep(sprintf(
+                    'DROP INDEX %s%s',
+                    $schema,
+                    $this->quoteColumnName($indexName),
+                ));
+            }
+        }
+
+        return $instructions;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getDropIndexByNameInstructions(string $tableName, string $indexName): AlterInstructions
+    {
+        $instructions = new AlterInstructions();
+        $indexName = strtolower($indexName);
+        $indexes = $this->getIndexes($tableName);
+
+        $found = false;
+        foreach ($indexes as $index) {
+            if ($indexName === strtolower((string)$index['name'])) {
+                $found = true;
+                break;
+            }
+        }
+
+        if ($found) {
+            $schema = $this->getSchemaName($tableName, true)['schema'];
+            $instructions->addPostStep(sprintf(
+                'DROP INDEX %s%s',
+                $schema,
+                $this->quoteColumnName($indexName),
+            ));
+        }
+
+        return $instructions;
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws \InvalidArgumentException
+     */
+    public function hasPrimaryKey(string $tableName, $columns, ?string $constraint = null): bool
+    {
+        if ($constraint !== null) {
+            throw new InvalidArgumentException('SQLite does not support named constraints.');
+        }
+
+        $columns = array_map(strtolower(...), (array)$columns);
+        $primaryKey = array_map(strtolower(...), $this->getPrimaryKey($tableName));
+
+        return !array_diff($primaryKey, $columns) && !array_diff($columns, $primaryKey);
+    }
+
+    /**
+     * Get the primary key from a particular table.
+     *
+     * @param string $tableName Table name
+     * @return string[]
+     */
+    protected function getPrimaryKey(string $tableName): array
+    {
+        $dialect = $this->getSchemaDialect();
+        $indexes = $dialect->describeIndexes($tableName);
+        foreach ($indexes as $index) {
+            if ($index['type'] == TableSchema::CONSTRAINT_PRIMARY) {
+                return $index['columns'];
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Get an array of foreign keys from a particular table.
+     *
+     * @param string $tableName Table name
+     * @return array
+     */
+    protected function getForeignKeys(string $tableName): array
+    {
+        $dialect = $this->getSchemaDialect();
+
+        return $dialect->describeForeignKeys($tableName);
+    }
+
+    /**
+     * @param \Migrations\Db\Table\TableMetadata $table The Table
+     * @param string $column Column Name
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function getAddPrimaryKeyInstructions(TableMetadata $table, string $column): AlterInstructions
+    {
+        $instructions = $this->beginAlterByCopyTable($table->getName());
+
+        $tableName = $table->getName();
+        $instructions->addPostStep(function (array $state) use ($column): array {
+            $quotedColumn = preg_quote($column);
+            $columnPattern = sprintf('`%s`|"%s"|\[%s\]', $quotedColumn, $quotedColumn, $quotedColumn);
+            $matchPattern = sprintf('/(%s)\s+(\w+(\(\d+\))?)(\s+(NOT )?NULL)?(\s+(?:PRIMARY KEY\s+)?AUTOINCREMENT)?/i', $columnPattern);
+
+            $sql = $state['createSQL'];
+
+            if (preg_match($matchPattern, (string)$state['createSQL'], $matches) && isset($matches[2])) {
+                $hasAutoIncrement = isset($matches[6]) && stripos($matches[6], 'AUTOINCREMENT') !== false;
+                if ($matches[2] === 'INTEGER' && $hasAutoIncrement) {
+                    // Only add AUTOINCREMENT if the column already had it
+                    $replace = '$1 INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT';
+                } else {
+                    $replace = '$1 $2 NOT NULL PRIMARY KEY';
+                }
+                $sql = preg_replace($matchPattern, $replace, (string)$state['createSQL'], 1);
+            }
+
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function (array $state): array {
+            $columns = $this->fetchAll(sprintf('pragma table_info(%s)', $this->quoteTableName($state['tmpTableName'])));
+            $names = array_map($this->quoteColumnName(...), array_column($columns, 'name'));
+            $selectColumns = $writeColumns = $names;
+
+            return compact('selectColumns', 'writeColumns') + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * @param \Migrations\Db\Table\TableMetadata $table Table
+     * @param string $column Column Name
+     * @return \Migrations\Db\AlterInstructions
+     */
+    protected function getDropPrimaryKeyInstructions(TableMetadata $table, string $column): AlterInstructions
+    {
+        $tableName = $table->getName();
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function (array $state): array {
+            $search = "/(,?\s*PRIMARY KEY\s*\([^\)]*\)|\s+PRIMARY KEY(\s+AUTOINCREMENT)?)/";
+            $sql = preg_replace($search, '', (string)$state['createSQL'], 1);
+
+            if ($sql) {
+                $this->execute($sql);
+            }
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function (array $state) use ($column): array {
+            $newState = $this->calculateNewTableColumns($state['tmpTableName'], $column, $column);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName, null, null, false);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getAddForeignKeyInstructions(TableMetadata $table, ForeignKey $foreignKey): AlterInstructions
+    {
+        $instructions = $this->beginAlterByCopyTable($table->getName());
+
+        $tableName = $table->getName();
+        $instructions->addPostStep(function (array $state) use ($foreignKey, $tableName): array {
+            $this->execute('pragma foreign_keys = ON');
+            $sql = substr((string)$state['createSQL'], 0, -1) . ',' . $this->getForeignKeySqlDefinition($foreignKey, $tableName) . '); ';
+
+            //Delete indexes from original table and recreate them in temporary table
+            $schema = $this->getSchemaName($tableName, true)['schema'];
+            $tmpTableName = $state['tmpTableName'];
+            $indexes = $this->getIndexes($tableName);
+            foreach ($indexes as $index) {
+                if (!str_starts_with((string)$index['name'], 'sqlite_autoindex_')) {
+                    $sql .= sprintf(
+                        'DROP INDEX %s%s; ',
+                        $schema,
+                        $this->quoteColumnName($index['name']),
+                    );
+                    $createIndexSQL = $this->getDeclaringIndexSQL($tableName, $index['name']);
+                    $sql .= preg_replace(
+                        sprintf('/\b%s\b/', $tableName),
+                        $tmpTableName,
+                        $createIndexSQL,
+                    );
+                }
+            }
+
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function (array $state): array {
+            $columns = $this->fetchAll(sprintf('pragma table_info(%s)', $this->quoteTableName($state['tmpTableName'])));
+            $names = array_map($this->quoteColumnName(...), array_column($columns, 'name'));
+            $selectColumns = $writeColumns = $names;
+
+            return compact('selectColumns', 'writeColumns') + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * SQLiteAdapter does not implement this functionality, and so will always throw an exception if used.
+     *
+     * @throws \BadMethodCallException
+     */
+    protected function getDropForeignKeyInstructions(string $tableName, string $constraint): AlterInstructions
+    {
+        throw new BadMethodCallException('SQLite does not have named foreign keys');
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * @throws \InvalidArgumentException
+     */
+    protected function getDropForeignKeyByColumnsInstructions(string $tableName, array $columns): AlterInstructions
+    {
+        if (!$this->hasForeignKey($tableName, $columns)) {
+            throw new InvalidArgumentException(sprintf(
+                'No foreign key on column(s) `%s` exists',
+                implode(', ', $columns),
+            ));
+        }
+
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function (array $state) use ($columns): array {
+            $search = sprintf(
+                "/,[^,]+?\(\s*%s\s*\)\s*REFERENCES[^,]*\([^\)]*\)[^,)]*/is",
+                implode(
+                    '\s*,\s*',
+                    array_map(
+                        fn(string $column): string => $this->possiblyQuotedIdentifierRegex($column, false),
+                        $columns,
+                    ),
+                ),
+            );
+            $sql = preg_replace($search, '', (string)$state['createSQL']);
+
+            if ($sql) {
+                $this->execute($sql);
+            }
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function (array $state): array {
+            $newState = $this->calculateNewTableColumns($state['tmpTableName'], false, false);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * Get an array of check constraints from a particular table.
+     *
+     * @param string $tableName Table name
+     * @return array
+     */
+    protected function getCheckConstraints(string $tableName): array
+    {
+        $dialect = $this->getSchemaDialect();
+
+        return $dialect->describeCheckConstraints($tableName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getAddCheckConstraintInstructions(TableMetadata $table, CheckConstraint $checkConstraint): AlterInstructions
+    {
+        $tableName = $table->getName();
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function (array $state) use ($checkConstraint): array {
+            $constraintName = $checkConstraint->getName();
+            if ($constraintName === null || $constraintName === '') {
+                // Auto-generate constraint name if not provided
+                $constraintName = 'chk_' . substr(md5($checkConstraint->getExpression()), 0, 8);
+            }
+
+            $checkDef = sprintf(
+                'CONSTRAINT %s CHECK (%s)',
+                $this->quoteColumnName($constraintName),
+                $checkConstraint->getExpression(),
+            );
+
+            // Add the check constraint before the closing parenthesis
+            $sql = substr((string)$state['createSQL'], 0, -1) . ', ' . $checkDef . ')';
+            $this->execute($sql);
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function ($state) use ($tableName): array {
+            $newState = $this->calculateNewTableColumns($tableName, false, false);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getDropCheckConstraintInstructions(string $tableName, string $constraintName): AlterInstructions
+    {
+        $instructions = $this->beginAlterByCopyTable($tableName);
+
+        $instructions->addPostStep(function (array $state) use ($constraintName): array {
+            // Remove the check constraint from the CREATE TABLE statement
+            // Match CONSTRAINT name CHECK (expression) or just CHECK (expression)
+            $quotedName = $this->possiblyQuotedIdentifierRegex($constraintName, false);
+            $pattern = sprintf('/,?\s*CONSTRAINT\s+%s\s+CHECK\s*\([^)]+(?:\([^)]*\)[^)]*)*\)/is', $quotedName);
+
+            $sql = preg_replace($pattern, '', (string)$state['createSQL'], 1);
+            if ($sql) {
+                $this->execute($sql);
+            }
+
+            return $state;
+        });
+
+        $instructions->addPostStep(function ($state) use ($tableName): array {
+            $newState = $this->calculateNewTableColumns($tableName, false, false);
+
+            return $newState + $state;
+        });
+
+        return $this->endAlterByCopyTable($instructions, $tableName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function createDatabase(string $name, array $options = []): void
+    {
+        touch($name . $this->suffix);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function hasDatabase(string $name): bool
+    {
+        return is_file($name . $this->suffix);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function dropDatabase(string $name): void
+    {
+        $this->createdTables = [];
+        if ($this->getOption('memory')) {
+            $this->disconnect();
+            $this->connect();
+        }
+        if (file_exists($name . $this->suffix)) {
+            unlink($name . $this->suffix);
+        }
+    }
+
+    /**
+     * Gets the SQLite Index Definition for an Index object.
+     *
+     * @param \Migrations\Db\Table\TableMetadata $table Table
+     * @param \Migrations\Db\Table\Index $index Index
+     * @return string
+     */
+    protected function getIndexSqlDefinition(TableMetadata $table, Index $index): string
+    {
+        $def = $index->getType() === Index::UNIQUE ? 'UNIQUE INDEX' : 'INDEX';
+        $indexName = $index->getName();
+        if ($indexName == '') {
+            $indexName = $table->getName() . '_';
+            foreach ((array)$index->getColumns() as $column) {
+                $indexName .= $column . '_';
+            }
+            $indexName .= 'index';
+        }
+
+        return $def . ' ' . $this->quoteColumnName($indexName);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function getColumnTypes(): array
+    {
+        return array_keys(static::$supportedColumnTypes);
+    }
+
+    /**
+     * Gets the SQLite Foreign Key Definition for an ForeignKey object.
+     *
+     * @param \Migrations\Db\Table\ForeignKey $foreignKey Foreign key
+     * @param string $tableName Table name for auto-generating constraint name
+     * @return string
+     */
+    protected function getForeignKeySqlDefinition(ForeignKey $foreignKey, string $tableName): string
+    {
+        $constraintName = $foreignKey->getName() ?: $this->getUniqueForeignKeyName($tableName, $foreignKey->getColumns());
+        $def = ' CONSTRAINT ' . $this->quoteColumnName($constraintName);
+        $columnNames = [];
+        foreach ($foreignKey->getColumns() as $column) {
+            $columnNames[] = $this->quoteColumnName($column);
+        }
+        $def .= ' FOREIGN KEY (' . implode(',', $columnNames) . ')';
+        $refColumnNames = [];
+        foreach ($foreignKey->getReferencedColumns() as $column) {
+            $refColumnNames[] = $this->quoteColumnName($column);
+        }
+        $referencedTable = $foreignKey->getReferencedTable();
+        if ($referencedTable === null) {
+            throw new InvalidArgumentException('Foreign key must have a referenced table.');
+        }
+        $def .= ' REFERENCES ' . $this->quoteTableName($referencedTable) . ' (' . implode(',', $refColumnNames) . ')';
+        if ($foreignKey->getOnDelete()) {
+            $def .= ' ON DELETE ' . $foreignKey->getOnDelete();
+        }
+        if ($foreignKey->getOnUpdate()) {
+            $def .= ' ON UPDATE ' . $foreignKey->getOnUpdate();
+        }
+
+        return $def;
+    }
+
+    /**
+     * Generate a unique foreign key constraint name.
+     *
+     * @param string $tableName Table name
+     * @param array<string> $columns Column names
+     * @return string
+     */
+    protected function getUniqueForeignKeyName(string $tableName, array $columns): string
+    {
+        $baseName = $tableName . '_' . implode('_', $columns);
+        $existingKeys = $this->getForeignKeys($tableName);
+        $existingNames = array_column($existingKeys, 'name');
+
+        if (!in_array($baseName, $existingNames, true)) {
+            return $baseName;
+        }
+
+        $counter = 2;
+        while (in_array($baseName . '_' . $counter, $existingNames, true)) {
+            $counter++;
+        }
+
+        return $baseName . '_' . $counter;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function getInsertPrefix(?InsertMode $mode = null): string
+    {
+        if ($mode === InsertMode::IGNORE) {
+            return 'INSERT OR IGNORE';
+        }
+
+        return 'INSERT';
+    }
+
+    /**
+     * Get the upsert clause for SQLite (ON CONFLICT ... DO UPDATE SET).
+     *
+     * SQLite requires explicit conflict columns to determine which unique constraint
+     * should trigger the update. Unlike MySQL's ON DUPLICATE KEY UPDATE which applies
+     * to all unique constraints, SQLite's ON CONFLICT clause must specify the columns.
+     *
+     * @param \Migrations\Db\InsertMode|null $mode Insert mode
+     * @param array<string>|null $updateColumns Columns to update on conflict
+     * @param array<string>|null $conflictColumns Columns that define uniqueness for upsert (required for SQLite)
+     * @return string
+     * @throws \RuntimeException When using UPSERT mode without conflictColumns
+     */
+    protected function getUpsertClause(?InsertMode $mode, ?array $updateColumns, ?array $conflictColumns = null): string
+    {
+        if ($mode !== InsertMode::UPSERT || $updateColumns === null) {
+            return '';
+        }
+
+        if ($conflictColumns === null || $conflictColumns === []) {
+            throw new RuntimeException(
+                'SQLite requires the $conflictColumns parameter for insertOrUpdate(). ' .
+                'Specify the columns that have a unique constraint to determine conflict resolution.',
+            );
+        }
+
+        $quotedConflictColumns = array_map($this->quoteColumnName(...), $conflictColumns);
+        $updates = [];
+        foreach ($updateColumns as $column) {
+            $quotedColumn = $this->quoteColumnName($column);
+            $updates[] = $quotedColumn . ' = excluded.' . $quotedColumn;
+        }
+
+        return ' ON CONFLICT (' . implode(', ', $quotedConflictColumns) . ') DO UPDATE SET ' . implode(', ', $updates);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function getCreateViewInstructions(View $view): AlterInstructions
+    {
+        $sql = sprintf(
+            'CREATE VIEW IF NOT EXISTS %s AS %s',
+            $this->quoteTableName($view->getName()),
+            $view->getDefinition(),
+        );
+
+        return new AlterInstructions([], [$sql]);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function getDropViewInstructions(string $viewName, bool $materialized = false): AlterInstructions
+    {
+        $sql = sprintf(
+            'DROP VIEW IF EXISTS %s',
+            $this->quoteTableName($viewName),
+        );
+
+        return new AlterInstructions([], [$sql]);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function getCreateTriggerInstructions(string $tableName, Trigger $trigger): AlterInstructions
+    {
+        $events = is_array($trigger->getEvent()) ? $trigger->getEvent() : [$trigger->getEvent()];
+        $eventStr = implode(' OR ', $events);
+
+        $forEach = $trigger->getForEach() ? 'FOR EACH ROW' : '';
+
+        $sql = sprintf(
+            'CREATE TRIGGER %s %s %s ON %s %s BEGIN %s END',
+            $this->quoteColumnName($trigger->getName()),
+            $trigger->getTiming(),
+            $eventStr,
+            $this->quoteTableName($tableName),
+            $forEach,
+            $trigger->getDefinition(),
+        );
+
+        return new AlterInstructions([], [$sql]);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    protected function getDropTriggerInstructions(string $tableName, string $triggerName): AlterInstructions
+    {
+        $sql = sprintf(
+            'DROP TRIGGER IF EXISTS %s',
+            $this->quoteColumnName($triggerName),
+        );
+
+        return new AlterInstructions([], [$sql]);
+    }
+}

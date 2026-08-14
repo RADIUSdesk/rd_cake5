@@ -1,0 +1,13 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Strict comparison using \!\=\= between Cake\\Database\\StatementInterface and null will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: src/Db/Adapter/SqliteAdapter.php
+
+		-
+			message: '#^Call to an undefined method Migrations\\Db\\Table\\Index\:\:setUnique\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Db/Table/Index.php

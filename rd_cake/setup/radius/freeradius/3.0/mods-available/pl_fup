@@ -1,0 +1,3 @@
+perl pl_fup {
+	filename = ${modconfdir}/perl/fup.pl
+}

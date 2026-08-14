@@ -1,0 +1,99 @@
+server radiusdesk-plain {
+
+	authorize {
+	
+	    preprocess
+	        
+	    update control{
+            RADIUSdesk-Virtual-Server := "radiusdesk-plain"
+        }	
+        RADIUSdesk
+        
+	    chap
+	    mschap
+	    digest
+	    suffix
+	    
+	    eap {
+		    ok = return
+	    }
+	    
+	    files
+	    pap
+
+    }
+
+	authenticate {
+	
+	    Auth-Type PAP {
+		    pap
+	    }
+
+	    Auth-Type CHAP {
+		    chap
+	    }
+
+	    Auth-Type MS-CHAP {
+		    mschap
+	    }
+        
+        mschap
+
+	    digest
+
+	    eap
+    }
+
+    preacct {
+    
+	    preprocess
+        acct_unique
+	    suffix
+	    	    
+	    update control{
+            RADIUSdesk-Virtual-Server := "radiusdesk-plain"
+        }	
+        RADIUSdesk
+
+        update request {
+            Event-Timestamp := "%l"
+        }
+    }
+
+    accounting {
+        RADIUSdesk
+        ok
+    }
+
+    session {
+	    sql
+    }
+
+    post-auth {
+    
+        RADIUSdesk       
+        Post-Auth-Type REJECT {
+		    attr_filter.access_reject
+
+		    # Insert EAP-Failure message if the request was
+		    # rejected by policy instead of because of an
+		    # authentication failure
+		    eap
+
+		    #  Remove reply message if the response contains an EAP-Message
+		    remove_reply_message_if_eap
+		
+		    #CoovaChilli does not like the Reply-Message := "\r\nYou are already logged in - access denied\r\n\n" so we detect it and rewrite it
+		    if(reply:Reply-Message =~ /You are already logged in/i){
+			    update reply {
+				    Reply-Message := "Simultaneous connections limited to %{control:Simultaneous-Use}"
+			    }
+		    }	
+
+            #RADIUSdesk -> For rejects:
+            RADIUSdesk_last_reject		
+		
+	    }
+    }
+
+}

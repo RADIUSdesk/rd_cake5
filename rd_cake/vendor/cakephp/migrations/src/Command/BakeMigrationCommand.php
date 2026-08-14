@@ -1,0 +1,290 @@
+<?php
+declare(strict_types=1);
+
+/**
+ * CakePHP(tm) : Rapid Development Framework (https://cakephp.org)
+ * Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
+ *
+ * Licensed under The MIT License
+ * For full copyright and license information, please see the LICENSE.txt
+ * Redistributions of files must retain the above copyright notice.
+ *
+ * @copyright     Copyright (c) Cake Software Foundation, Inc. (https://cakefoundation.org)
+ * @link          https://cakephp.org CakePHP(tm) Project
+ * @license       https://www.opensource.org/licenses/mit-license.php MIT License
+ */
+namespace Migrations\Command;
+
+use Cake\Console\Arguments;
+use Cake\Console\ConsoleIo;
+use Cake\Console\ConsoleOptionParser;
+use Cake\Core\Configure;
+use Cake\Event\Event;
+use Cake\Event\EventManager;
+use Cake\Utility\Inflector;
+use Migrations\Util\ColumnParser;
+
+/**
+ * Command class for generating migration snapshot files.
+ */
+class BakeMigrationCommand extends BakeSimpleMigrationCommand
+{
+    protected string $_name;
+
+    /**
+     * @inheritDoc
+     */
+    public static function defaultName(): string
+    {
+        return 'bake migration';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function bake(string $name, Arguments $args, ConsoleIo $io): void
+    {
+        EventManager::instance()->on('Bake.initialize', function (Event $event): void {
+            /** @var \Bake\View\BakeView $view */
+            $view = $event->getSubject();
+            $view->loadHelper('Migrations.Migration');
+        });
+        $this->_name = $name;
+
+        parent::bake($name, $args, $io);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function template(): string
+    {
+        $style = $this->args->getOption('style') ?? Configure::read('Migrations.style', 'traditional');
+        if ($style === 'anonymous') {
+            return 'Migrations.config/skeleton-anonymous';
+        }
+
+        return 'Migrations.config/skeleton';
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function templateData(Arguments $arguments): array
+    {
+        $className = $this->_name;
+        $namespace = Configure::read('App.namespace');
+        $pluginPath = '';
+        if ($this->plugin) {
+            $namespace = $this->_pluginNamespace($this->plugin);
+            $pluginPath = $this->plugin . '.';
+        }
+
+        /** @var array<int, string> $args */
+        $args = $arguments->getArguments();
+        unset($args[0]);
+        $columnParser = new ColumnParser();
+        $fields = $columnParser->parseFields($args);
+        $indexes = $columnParser->parseIndexes($args);
+        $primaryKey = $columnParser->parsePrimaryKey($args);
+        $foreignKeys = $columnParser->parseForeignKeys($args);
+
+        $action = $this->detectAction($className);
+
+        if (!$action && count($fields)) {
+            $this->io->abort('When applying fields the migration name should start with one of the following prefixes: `Create`, `Drop`, `Add`, `Remove`, `Alter`. See: https://book.cakephp.org/migrations/5/getting-started/creating-migrations.html#migration-file-names');
+        }
+
+        if (!$action) {
+            return [
+                'plugin' => $this->plugin,
+                'pluginPath' => $pluginPath,
+                'namespace' => $namespace,
+                'tables' => [],
+                'action' => null,
+                'name' => $className,
+            ];
+        }
+
+        if (in_array($action[0], ['alter_table', 'add_field'], true) && $primaryKey) {
+            $this->io->abort('Adding a primary key to an already existing table is not supported.');
+        }
+
+        [$action, $table] = $action;
+
+        return [
+            'plugin' => $this->plugin,
+            'pluginPath' => $pluginPath,
+            'namespace' => $namespace,
+            'tables' => [$table],
+            'action' => $action,
+            'columns' => [
+                'fields' => $fields,
+                'indexes' => $indexes,
+                'primaryKey' => $primaryKey,
+            ],
+            'constraints' => $foreignKeys,
+            'name' => $className,
+        ];
+    }
+
+    /**
+     * Gets the option parser instance and configures it.
+     *
+     * @return \Cake\Console\ConsoleOptionParser
+     */
+    public function getOptionParser(): ConsoleOptionParser
+    {
+        $parser = parent::getOptionParser();
+        $text = <<<'TEXT'
+Create a blank or generated migration. Using the name of the migration
+Operations and table names will be inferred.
+
+<info>Examples</info>
+
+<warning>bin/cake bake migration CreateUsers</warning>
+
+This command will generate a migration that creates
+a table named users.
+
+<warning>bin/cake bake migration DropGroups</warning>
+This command will generate a migration that drops
+the groups table.
+
+<warning>bin/cake bake migration AlterUsers</warning>
+This command will generate a migration that alters the users table.
+
+<warning>bin/cake bake migration AddFieldToUsers role:string</warning>
+This command will generate a migration that adds a 'role' field
+with a 'string' type to the users table. Migrations that operate
+on columns can use the <info>Column Grammar</info> to describe
+the column in detail.
+
+<warning>bin/cake bake migration AlterFieldOnUsers role</warning>
+These commands will generate a migration that will alter the 'role'
+field on the users table.
+
+<warning>bin/cake bake migration RemoveFieldsFromUsers role</warning>
+<warning>bin/cake bake migration RemoveRoleFromUsers</warning>
+These commands will generate a migration that will remove the 'role'
+field on the users table.
+
+<info>Column Grammar</info>
+
+When describing columns you can use the following syntax:
+
+<warning>{name}:{type}{nullable}[{length}]:default[{value}]:{index}:{indexName}</warning>
+
+All sections other than name are optional.
+
+* The types are the abstract database column types in CakePHP.
+* The <warning>?</warning> value indicates if a column is nullable.
+  e.g. <warning>role:string?</warning>.
+* Length option must be enclosed in <warning>[]</warning>, for example: <warning>name:string?[100]</warning>.
+* The <warning>default[value]</warning> option sets a default value for the column.
+  Supports booleans (true/false), integers, floats, strings, and null.
+  e.g. <warning>active:boolean:default[true]</warning>, <warning>count:integer:default[0]</warning>.
+* The <warning>index</warning> attribute can define the column as having a unique
+  key with <warning>unique</warning> or a primary key with <warning>primary</warning>.
+* Use <warning>references</warning> type to create a foreign key constraint.
+  e.g. <warning>category_id:references</warning> (auto-infers table as 'categories')
+  or <warning>category_id:references:custom_table</warning> to specify the referenced table.
+
+<info>Examples</info>
+
+<warning>bin/cake bake migration AddOrgIdToProjects org_id:int</warning>
+Create a migration that adds a column (<warning>org_id INT</warning>) to the <warning>projects</warning>
+table.
+
+<warning>bin/cake bake migration AddOrgIdToProjects org_id:int?</warning>
+Create a migration that adds a nullable column (<warning>org_id INT NULL</warning>) to the <warning>projects</warning>
+table.
+
+<warning>bin/cake bake migration AddNameToProjects name:string[128]</warning>
+Create a migration that adds (<warning>name VARCHAR(128)</warning>) to the <warning>projects</warning>
+table.
+
+<warning>bin/cake bake migration AddSlugToProjects name:string[128]:unique</warning>
+Create a migration that adds (<warning>name VARCHAR(128)</warning> and a <warning>UNIQUE</warning> index)
+to the <warning>projects</warning> table.
+
+<warning>bin/cake bake migration CreatePosts title:string user_id:references</warning>
+Create a migration that creates the <warning>posts</warning> table with a foreign key
+constraint on <warning>user_id</warning> referencing the <warning>users</warning> table.
+
+<warning>bin/cake bake migration AddCategoryIdToArticles category_id:references:categories</warning>
+Create a migration that adds a foreign key column (<warning>category_id</warning>) to the <warning>articles</warning>
+table referencing the <warning>categories</warning> table.
+
+<warning>bin/cake bake migration AddActiveToUsers active:boolean:default[true]</warning>
+Create a migration that adds an <warning>active</warning> column with a default value of <warning>true</warning>.
+
+<warning>bin/cake bake migration AddCountToProducts count:integer:default[0]:unique</warning>
+Create a migration that adds a <warning>count</warning> column with default <warning>0</warning> and a unique index.
+
+<info>Migration Styles</info>
+
+You can generate migrations in different styles:
+
+<warning>bin/cake bake migration --style=anonymous CreatePosts</warning>
+Creates an anonymous class migration with readable file naming (2024_12_08_120000_CreatePosts.php)
+
+<warning>bin/cake bake migration --style=traditional CreatePosts</warning>
+Creates a traditional class-based migration (20241208120000_create_posts.php)
+
+You can set the default style in your configuration:
+<warning>Configure::write('Migrations.style', 'anonymous');</warning>
+
+TEXT;
+
+        $parser->setDescription($text);
+
+        return $parser;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    protected function buildOptionParser(ConsoleOptionParser $parser): ConsoleOptionParser
+    {
+        $parser = parent::buildOptionParser($parser);
+
+        $parser->addOption('style', [
+            'help' => 'Migration style to use (traditional or anonymous).',
+            'default' => null,
+            'choices' => ['traditional', 'anonymous'],
+        ]);
+
+        return $parser;
+    }
+
+    /**
+     * Detects the action and table from the name of a migration
+     *
+     * @param string $name Name of migration
+     * @return array<string>
+     */
+    public function detectAction(string $name): array
+    {
+        if (preg_match('/^(Create|Drop)(.*)/', $name, $matches)) {
+            $action = strtolower($matches[1]) . '_table';
+            $table = Inflector::underscore($matches[2]);
+        } elseif (preg_match('/^(Add).+?(?:To)(.*)/', $name, $matches)) {
+            $action = 'add_field';
+            $table = Inflector::underscore($matches[2]);
+        } elseif (preg_match('/^(Remove).+?(?:From)(.*)/', $name, $matches)) {
+            $action = 'drop_field';
+            $table = Inflector::underscore($matches[2]);
+        } elseif (preg_match('/^(Alter).+?(?:On)(.*)/', $name, $matches)) {
+            $action = 'alter_field';
+            $table = Inflector::underscore($matches[2]);
+        } elseif (preg_match('/^(Alter)(.*)/', $name, $matches)) {
+            $action = 'alter_table';
+            $table = Inflector::underscore($matches[2]);
+        } else {
+            return [];
+        }
+
+        return [$action, $table];
+    }
+}

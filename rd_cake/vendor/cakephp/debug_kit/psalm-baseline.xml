@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<files psalm-version="7.0.0-beta16@491dd740b8862db7d4fe8c1f6c161055c32ad651">
+  <file src="src/Mailer/PreviewResult.php">
+    <ImpureMethodCall>
+      <code><![CDATA[$mailer->render()]]></code>
+      <code><![CDATA[$mailer->reset()]]></code>
+      <code><![CDATA[$mailer->viewBuilder()]]></code>
+      <code><![CDATA[$mailer->viewBuilder()]]></code>
+      <code><![CDATA[$mailer->viewBuilder()->setTemplate($method)]]></code>
+      <code><![CDATA[$message->getHeaders($extra)]]></code>
+    </ImpureMethodCall>
+  </file>
+  <file src="src/Mailer/Transport/DebugKitTransport.php">
+    <NullArgument>
+      <code><![CDATA[$this->emailLog]]></code>
+    </NullArgument>
+  </file>
+</files>

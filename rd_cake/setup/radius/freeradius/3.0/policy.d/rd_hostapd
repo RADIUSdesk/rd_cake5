@@ -1,0 +1,9 @@
+
+set_operator_name {
+
+	if(!&request:Operator-Name){
+		update request {
+                    Operator-Name := ""
+            	}
+	}
+}

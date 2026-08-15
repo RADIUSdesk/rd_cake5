@@ -30,13 +30,14 @@ class DynamicDetailsController extends AppController{
 	protected $theme_selected   = 'Default';	
 	protected $default_language = 'en_GB';
 	
-	$this->DynamicDetails = $this->fetchTable('DynamicDetails');
-    $this->DynamicPairs = $this->fetchTable('DynamicPairs');
-    $this->DynamicPhotos = $this->fetchTable('DynamicPhotos');
-    $this->DynamicPages = $this->fetchTable('DynamicPages');
-    $this->DynamicDetailSocialLogins = $this->fetchTable('DynamicDetailSocialLogins');
-    $this->DynamicDetailCtcs = $this->fetchTable('DynamicDetailCtcs');
-    $this->PermanentUsers = $this->fetchTable('PermanentUsers');
+ 
+    protected DynamicDetailsTable $DynamicDetails;
+    protected DynamicPairsTable $DynamicPairs;
+    protected DynamicPhotosTable $DynamicPhotos;
+    protected DynamicPagesTable $DynamicPagesLogins;
+    protected DynamicDetailSocialLoginsTable $DynamicDetailSocialLogins;
+    protected DynamicDetailCtcsTable $DynamicDetailCtcs;
+    protected PermanentUsersTable $PermanentUsers;
     
      
     public function initialize():void{  

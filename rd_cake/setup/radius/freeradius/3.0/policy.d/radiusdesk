@@ -2,6 +2,9 @@ RADIUSdesk.authorize {
 
     #JAN 2026  
     RADIUSdesk_pu_username_for_mac
+    
+    #APR 2026
+    RADIUSdesk_pu_username_for_ip	
 
 	#hostapd Private PSK
 	RADIUSdesk_rewrite_mac_username
@@ -66,16 +69,15 @@ RADIUSdesk.preacct {
             RADIUSdesk_preacct
         }        
     }
-
+    
     if((&control:RADIUSdesk-Virtual-Server)&&(&control:RADIUSdesk-Virtual-Server == 'default')){
         RADIUSdesk_preacct
     }	
-
+    
     update request {
         Event-Timestamp := "%l"
     }
 }
-
 
 RADIUSdesk.accounting {
     RADIUSdesk_acct
@@ -89,6 +91,71 @@ RADIUSdesk.post-auth {
 }
 
 #____ RADIUSdesk policies __________
+
+#APR 2026
+RADIUSdesk_pu_username_for_ip {
+
+    if ((&User-Name) && (&User-Name =~ /^((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])$/)) {
+
+	    update control {
+            Tmp-String-0 := "%{User-Name}"
+        }
+
+        #
+        # Look up permanent user by static_ip
+        #
+        update control {
+            Rd-Device-Owner := "%{sql:SELECT username \
+                FROM permanent_users \
+                WHERE static_ip = '%{control:Tmp-String-0}' \
+                LIMIT 1}"
+        }
+
+        #
+        # If a match was found, swap User-Name
+        #
+        
+        if (&control:Rd-Device-Owner != "") {
+        
+            #
+            # Always rewrite User-Name
+            #
+            update request {
+                User-Name := "%{control:Rd-Device-Owner}"
+            }
+                    
+            #
+            # AUTHENTICATION requests only
+            #
+            if (&Packet-Type == Access-Request) {
+
+                #
+                # Fetch Cleartext-Password
+                #
+                update control {
+                    Tmp-String-1 := "%{sql:SELECT value \
+                        FROM radcheck \
+                        WHERE username = '%{control:Rd-Device-Owner}' \
+                          AND attribute = 'Cleartext-Password' \
+                        LIMIT 1}"
+                }
+
+                if ("%{control:Tmp-String-1}" != "") {
+                    update request {
+                        User-Password := "%{control:Tmp-String-1}"
+                    }
+
+                    update reply {
+                        Class := "%{control:Rd-Device-Owner}"
+                    }
+                    update reply {
+                        User-Name := "%{control:Rd-Device-Owner}"
+                    }
+                }
+            }           
+        }
+    }
+}
 
 #Jan 2026
 RADIUSdesk_pu_username_for_mac {
@@ -105,10 +172,10 @@ RADIUSdesk_pu_username_for_mac {
             Tmp-String-0 := "%{toupper:%{1}-%{2}-%{3}-%{4}-%{5}-%{6}}"
         }
 
-	#17March Mikrotik is acting inconsistent with the Calling-Station-Id so we will replace it with the User-Name (Tmp-String-0) if we detected the username is a mac address
-	update request {
-		Calling-Station-Id := "%{control:Tmp-String-0}"
-	}
+        #17March Mikrotik is acting inconsistent with the Calling-Station-Id so we will replace it with the User-Name (Tmp-String-0) if we detected the username is a mac address
+	    update request {
+		    Calling-Station-Id := "%{control:Tmp-String-0}"
+	    }
         
         #
         # Look up permanent user by MAC
@@ -162,7 +229,7 @@ RADIUSdesk_pu_username_for_mac {
             }
             
         }else{
-	    # AUTHENCTICATION requests only
+        # AUTHENCTICATION requests only
             if (&Packet-Type == Access-Request) {
                 #Optionally add it if missing
 		# 24 March - Disable for now - Dirk
@@ -688,7 +755,6 @@ RADIUSdesk_data_counter {
     }
 }
 
-
 RADIUSdesk_time_counter {
 
     if((&control:Rd-Total-Time)&&(&control:Rd-Reset-Type-Time)&&(&control:Rd-Cap-Type-Time == 'hard')){
@@ -848,37 +914,35 @@ RADIUSdesk_realm_dynamic_client_check {
     }
 }
 
+RADIUSdesk_user_ssid_check {
+	#__We check if the user is flagged to only connect through certain SSIDs (Rd-Ssid-Check == 1)_
+	#__If so we try to find the SSID and see if this ssid is allowed for the specific user________
 
-
-	RADIUSdesk_user_ssid_check {
-		#__We check if the user is flagged to only connect through certain SSIDs (Rd-Ssid-Check == 1)_
-		#__If so we try to find the SSID and see if this ssid is allowed for the specific user________
-
-		#If it is present....
-		if(&control:Rd-Ssid-Check){
-			#If it is == 1
-			if(&control:Rd-Ssid-Check == 1){
-				RADIUSdesk_rewrite_called_station_id
-				if(updated){
-					if("%{sql:SELECT COUNT(*) FROM user_ssids WHERE username= '%{request:User-Name}' AND ssidname= '%{control:Rd-Ssid-Value}'}" > 0){
-                		ok
-        			}
-        			else {
-						update reply {
-				            Reply-Message := "User %{request:User-Name} has not permission to connect through SSID: %{control:Rd-Ssid-Value}"
-				        }
-                		reject
-        			}
-				}
-				else {
+	#If it is present....
+	if(&control:Rd-Ssid-Check){
+		#If it is == 1
+		if(&control:Rd-Ssid-Check == 1){
+			RADIUSdesk_rewrite_called_station_id
+			if(updated){
+				if("%{sql:SELECT COUNT(*) FROM user_ssids WHERE username= '%{request:User-Name}' AND ssidname= '%{control:Rd-Ssid-Value}'}" > 0){
+            		ok
+    			}
+    			else {
 					update reply {
-			            Reply-Message := "No SSID available to evaluate SSID restriction"
+			            Reply-Message := "User %{request:User-Name} has not permission to connect through SSID: %{control:Rd-Ssid-Value}"
 			        }
             		reject
-				}
+    			}
+			}
+			else {
+				update reply {
+		            Reply-Message := "No SSID available to evaluate SSID restriction"
+		        }
+        		reject
 			}
 		}
 	}
+}
 
 RADIUSdesk_user_check {
 
@@ -894,37 +958,55 @@ RADIUSdesk_user_check {
             reject
         }
 
-	# New multi-state logic
-if (&control:Rd-Admin-State) {
-    switch "%{tolower:%{control:Rd-Admin-State}}" {
-        case active {
-            # allow auth to proceed
-        }
-        case suspended {
-            update reply {
-                Reply-Message := "User %{request:User-Name} account suspended"
+	    # New multi-state logic
+        if (&control:Rd-Admin-State) {
+            switch "%{tolower:%{control:Rd-Admin-State}}" {
+                case active {
+                    # allow auth to proceed
+                }
+                case suspended {
+                    update reply {
+                        Reply-Message := "User %{request:User-Name} account suspended"
+                    }
+                    reject
+                }
+                case terminated {
+                    update reply {
+                        Reply-Message := "User %{request:User-Name} account terminated"
+                    }
+                    reject
+                }
+                case depleted {
+                    update control {
+                        Tmp-String-0 := "%{sql:SELECT COALESCE((SELECT GREATEST(0, TIMESTAMPDIFF(SECOND, NOW(), temporary_access_until)) FROM permanent_users WHERE username = '%{request:User-Name}' AND admin_state = 'depleted' AND temporary_access_until > NOW()), -1) AS seconds_remaining}"
+                    }
+                    if(&control:Tmp-String-0  != '-1'){
+                        update reply {
+                            Session-Timeout := "%{control:Tmp-String-0}"
+                            Class := "OPN5G_TEMP"
+                            User-Name := "OPN5G_TEMP"		 
+                        }
+                        accept
+                    }else{
+                        update reply {
+                            Reply-Message := "User %{request:User-Name} account depleted"		
+                        }
+                        reject
+                    }
+                }
+                case {
+                    # unknown value -> reject (or treat as active if you prefer)
+                    update reply {
+                        Reply-Message := "User %{request:User-Name} invalid admin state: %{control:Rd-Admin-State}"
+                    }
+                    reject
+                }
             }
-            reject
+            
+        } else {
+            # If state is missing, treat as active (or reject—your call)
+            # noop
         }
-        case terminated {
-            update reply {
-                Reply-Message := "User %{request:User-Name} account terminated"
-            }
-            reject
-        }
-        case {
-            # unknown value -> reject (or treat as active if you prefer)
-            update reply {
-                Reply-Message := "User %{request:User-Name} invalid admin state: %{control:Rd-Admin-State}"
-            }
-            #reject
-        }
-    }
-} else {
-    # If state is missing, treat as active (or reject—your call)
-    # noop
-}
-
 
         #Check if this user has an activation time
         if(&control:Rd-Account-Activation-Time){
@@ -967,15 +1049,14 @@ if (&control:Rd-Admin-State) {
         }
 
 		#Check if there are SSID restrictions declared
-		RADIUSdesk_user_ssid_check
-		
-		#__ FUP Dec 2022 __
-		if(&control:Rd-Fup-Comp-Count){
-		    if(&control:Rd-Fup-Comp-Count >= 0){
+        RADIUSdesk_user_ssid_check
+
+        #__ FUP Dec 2022 __
+        if(&control:Rd-Fup-Comp-Count){
+            if(&control:Rd-Fup-Comp-Count >= 0){
                 pl_fup
             }		
-		}
-		
+        }		
     }
 }
 
@@ -1285,7 +1366,12 @@ RADIUSdesk_async_acct {
     #Requires a User-Name in the request and a table called new_accountings with a username column
     if((&request:User-Name)&&(&request:Calling-Station-Id)){
         "%{sql:INSERT IGNORE INTO new_accountings SET new_accountings.username='%{request:User-Name}',new_accountings.mac='%{request:Calling-Station-Id}'}"
-    }
+    }else{
+	#===For Open5GS-NAS - There is no MAC Address ===#
+        if(&request:User-Name){
+            "%{sql:INSERT IGNORE INTO new_accountings SET new_accountings.username='%{request:User-Name}'}"
+    	}
+   }
 }
 
 RADIUSdesk_auto_devices_check {

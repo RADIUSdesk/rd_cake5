@@ -17,7 +17,6 @@ use App\Model\Table\GroupsTable;
 
 class RadpostauthsController extends AppController {
 
-    public $base = "Access Providers/Controllers/Radpostauths/";
     protected $main_model = 'Radpostauths';
     
     protected RadpostauthsTable $Radpostauths;

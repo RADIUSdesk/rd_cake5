@@ -24,7 +24,6 @@ use App\Model\Table\PermanentUsersTable;
 
 class ThirdPartyAuthsController extends AppController{
   
-    public $base         = "Access Providers/Controllers/ThirdPartyAuths/"; 
     protected $idp_avail    = ['Facebook', 'Google', 'Twitter'];
     protected $cb           = 'third-party-auths/index.json';
     

@@ -21,7 +21,7 @@ class TopUpsTable extends Table{
             $user = $this->PermanentUsers->get($entity->permanent_user_id);           
             $entity->permanent_user = $user->username;
         }
-
+        //FIXME:2026-08-19 18:11:49 debug: Since 5.2.0: Returning a value from event listeners is deprecated. Use `$event->setResult()` instead in `Model.beforeSave` of `App\Model\Table\TopUpsTable::beforeSave()`
         return true;
     }
 }

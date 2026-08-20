@@ -10,6 +10,9 @@ use Cake\Event\EventInterface;
 use Cake\I18n\DateTime;
 use Cake\Datasource\EntityInterface;
 
+use Cake\Log\Log;  // <-- Add this import
+use ArrayObject;
+
 class PermanentUsersTable extends Table{
 
     public function initialize(array $config): void{
@@ -114,4 +117,50 @@ class PermanentUsersTable extends Table{
             }
         }
     }
+    
+    public function afterSaveCommit(EventInterface $event, EntityInterface $entity, ArrayObject $options): void {
+
+        if ($entity->isNew()) {
+            // Run the command - record is now committed to database
+            $output = shell_exec('bin/cake re_auth_permanent_user ' . $entity->id . ' 2>&1');            
+            if ($output) {
+                Log::write('info', 'Command output: ' . $output);
+            }
+        }
+        //--- if the user's admin_state == depleted and the temporary_access_until changed; re-auth
+        //--- FreeRADIUS then also have to be adapted in order to give temp access to the user (typically it will be logged/accounted under a different/dedicated user
+        else {
+        
+            if ($entity->isDirty('temporary_access_until')){ //We don't care what the value is, only need to know if it changed
+                $output = shell_exec('bin/cake re_auth_permanent_user ' . $entity->id . ' 2>&1');           
+                Log::write('info', sprintf(
+                    'Temp-access re-auth for %s. Command feedback: %s', 
+                    $entity->username, $output
+                ));           
+            }      
+        }
+             
+        /*
+        //-- Not needed since the after the user are created top-ups will cause re_auth's
+        // 2. Existing records that's been updated
+        else {
+            //Check if 'admin_state' changed
+            if ($entity->isDirty('admin_state')) {
+                $new_value = $entity->get('admin_state'); // or $entity->admin_state
+                $old_value = $entity->getOriginal('admin_state');
+                
+                // Only call re-auth if we moved from depleted to active
+                if ($old_value === 'depleted' && $new_value === 'active') {
+                    $output = shell_exec('bin/cake re_auth_permanent_user ' . $entity->id . ' 2>&1');
+                    
+                    Log::write('info', sprintf(
+                        'User %d restored from %s to %s. Command feedback: %s', 
+                        $entity->id, $old_value, $new_value, $output
+                    ));
+                }
+            }
+        }
+        */
+    }
+        
 }

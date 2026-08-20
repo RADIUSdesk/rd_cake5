@@ -15,11 +15,17 @@ use Cake\Core\Configure\Engine\PhpConfig;
 
 use Cake\ORM\TableRegistry;
 
+use App\Model\Table\RadacctsTable;
+use App\Model\Table\UsersTable;
+
 class IspPlumbingComponent extends Component {
 
 	protected $root_user_id	= 44;
 	protected $disabled	    = false;
 	protected array $components   = ['Kicker'];
+	
+	protected RadacctsTable $Radaccts;
+	protected UsersTable $Users;
    
     public function disconnectIfActive($entity){
     

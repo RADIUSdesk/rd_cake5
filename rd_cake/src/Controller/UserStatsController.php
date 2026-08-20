@@ -20,7 +20,6 @@ use App\Model\Table\TimezonesTable;
 
 class UserStatsController extends AppController {
 
-    public $base            = "Access Providers/Controllers/UserStats/";
     protected $main_model   = 'UserStats';
     protected $time_zone    = 'UTC'; //Default for timezone
     

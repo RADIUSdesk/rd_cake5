@@ -23,8 +23,9 @@ use App\Model\Table\RealmVlansTable;
 
 class PermanentUsersController extends AppController{
 
-    public $base            = "Access Providers/Controllers/PermanentUsers/";
     protected $main_model   = 'PermanentUsers';
+    protected $tempAccessMin = 10;
+    
     protected AuditLogService $AuditLogService;
     
     protected PermanentUsersTable $PermanentUsers;
@@ -1387,6 +1388,43 @@ class PermanentUsersController extends AppController{
                 $this->viewBuilder()->setOption('serialize', true); 
             }            
         }       
+    }
+    
+    //-- AUG 2026 -- This is a function that will set the (newly added) temporary_access_until timestamp
+    //-- You can specify a value in minutes which will be added to the current timestamp else the default will be $this->tempAccessMin
+    //http://127.0.0.1/cake4/rd_cake/permanent-users/set-temp-access.json?_dc=1787197157733&token=fe707fcd-6316-4c26-b14c-03ae7fc55555&cloud_id=23&user_id=224&minutes=60
+    public function setTempAccess(){
+    
+        $addMinutes = $this->tempAccessMin;
+        
+        $req_q      = $this->request->getQuery();
+        if(isset($req_q['user_id'])){
+            $user_id = $req_q['user_id'];
+            $permanentUser = $this->PermanentUsers
+                ->find()
+                ->where(['PermanentUsers.id' => $user_id])
+                ->first();
+            if($permanentUser){
+                //For now we require the account's admin_state to be 'depleted'
+                if($permanentUser->admin_state == 'depleted'){
+                    $permanentUser->temporary_access_until = DateTime::now()->addMinutes($addMinutes);
+                    $this->PermanentUsers->save($permanentUser);
+                }         
+            }           
+        
+        }else{
+            $message = __('Could not set the temporary_access_until for permanent user');
+            $this->JsonErrors->errorMessage($message);
+            return;       
+        }
+        
+        $success    = true;
+        $this->set([
+            'data'      => [],
+            'success'   => $success
+        ]);
+        $this->viewBuilder()->setOption('serialize', true);       
+            
     }
    
     public function menuForGrid(){

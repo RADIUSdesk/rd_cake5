@@ -162,30 +162,43 @@ class UsageCommand extends Command
         return false;
     }
 
-    public function data_usage($counter_data, $username, $field)
-    {
-        $conn = ConnectionManager::get('default');
-        $query_string = false;
 
-        if ($counter_data['reset'] == 'never') {
-            $query_string = "SELECT IFNULL(SUM(acctinputoctets)+SUM(acctoutputoctets),0) as used FROM user_stats WHERE $field=:username"; 
-        } else {
+    public function data_usage(array $counter_data, string $username, string $field): int|float{
+
+        // 1.) A Whitelist of field names to prevent SQL injection
+        $allowed_fields = ['username', 'callingstationid','realm','nasipaddress','nasidentifier','callingstationid']; 
+        if (!in_array($field, $allowed_fields)) {
+            throw new \InvalidArgumentException('Non valid field specified');
+        }
+
+        $conn = ConnectionManager::get('default');
+        
+        // 2. Start with CakePHP's Query Buider
+        $query = $conn->selectQuery()
+            ->select([
+                'used' => 'IFNULL(SUM(acctinputoctets) + SUM(acctoutputoctets), 0)'
+            ])
+            ->from('user_stats')
+            ->where([$field => $username]); // Base filter
+
+        // 3. Add time condition only if needed
+        if ($counter_data['reset'] !== 'never') {
             $start_time = $this->_find_start_time($counter_data);
             if ($start_time) {
-                $query_string = "SELECT IFNULL(SUM(acctinputoctets) + SUM(acctoutputoctets), 0) AS used " .
-                                "FROM user_stats " .
-                                "WHERE $field = :username " .
-                                "AND created > FROM_UNIXTIME(:start_time)";
+                // Change Unix timestamp to MySQL DATETIME
+                $formatted_time = date('Y-m-d H:i:s', $start_time);
+                $query->andWhere(['created >' => $formatted_time]);
+            } else {
+                return 0; // If there are not start time return early
             }
         }
 
-        if ($query_string) {
-            $stmt = $conn->execute($query_string, ['username' => $username, 'start_time' => $start_time ?? null]);
-            $row = $stmt->fetch('assoc');
-            return $row['used'] ?? 0;
-        }
-        return false;
+        // 4. Do the query and get the result
+        $row = $query->execute()->fetch('assoc');
+        
+        return $row ? (int)$row['used'] : 0;
     }
+ 
 
     public function data_usage_for_mac($counter_data, $username, $mac)
     {

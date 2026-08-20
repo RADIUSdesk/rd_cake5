@@ -44,8 +44,7 @@ class AccessProvidersController extends AppController{
         'cmp_unknown_dynamic_clients'   => 'UnknownDynamicClients/index',
         'cmp_unknown_nodes'     => 'UnknownNodes/index',
     ];
-    protected   $acl_base = "Access Providers/Controllers/";
-  
+   
     public function initialize():void{  
         parent::initialize();  
           		

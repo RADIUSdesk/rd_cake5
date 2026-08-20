@@ -24,7 +24,6 @@ use App\Model\Table\PermanentUsersTable;
 
 class DynamicDetailsController extends AppController{
   
-    public $base  				= "Access Providers/Controllers/DynamicDetails/";   
     protected $main_model 		= 'DynamicDetails'; 
     protected $theme_default    = 'Default';
 	protected $theme_selected   = 'Default';	
@@ -34,7 +33,7 @@ class DynamicDetailsController extends AppController{
     protected DynamicDetailsTable $DynamicDetails;
     protected DynamicPairsTable $DynamicPairs;
     protected DynamicPhotosTable $DynamicPhotos;
-    protected DynamicPagesTable $DynamicPagesLogins;
+    protected DynamicPagesTable $DynamicPages;
     protected DynamicDetailSocialLoginsTable $DynamicDetailSocialLogins;
     protected DynamicDetailCtcsTable $DynamicDetailCtcs;
     protected PermanentUsersTable $PermanentUsers;

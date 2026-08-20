@@ -1,4 +1,12 @@
 <?php
+//--- This command can be called in two ways.
+//--- If it is called via cron with no argument then it will look at the new_accountings table
+//-- It can also be called with a username as argument. (e.g. We call it from the TopUps Controller to update the percentage usage for a permanent user)
+
+//as www-data
+//cd /var/www/rdcore/cake4/rd_cake && bin/cake accounting >> /dev/null 2>&1
+
+
 namespace App\Command;
 
 use Cake\Command\Command;
@@ -53,8 +61,16 @@ class AccountingCommand extends Command
     }
 
 
-    public function execute(Arguments $args, ConsoleIo $io): int
-    {
+    public function execute(Arguments $args, ConsoleIo $io): int {
+
+        //
+        $username = $args->getArgumentAt(0);
+        if ($username) {
+            $io->out("Accounting update for $username");
+            $this->process_username($username,$username,$io);
+            return static::CODE_SUCCESS;
+        }
+     
         $qr = $this->NewAccountings->find()->all();
         foreach($qr as $i){
             $this->process_username($i->username,$i->mac,$io);
@@ -71,7 +87,7 @@ class AccountingCommand extends Command
         //find type
         $io->info("Test the usertype of $username");
         $type = $this->find_type($username);
-
+        
         //____ Vouchers _____
         if($type == 'voucher'){
             $io->info("$username is a Voucher");
@@ -269,16 +285,22 @@ class AccountingCommand extends Command
                 if(array_key_exists('data', $counters)){
 					//We will only update the usage if it is NOT Rd-Mac-Counter-Data in the counter (mac_counter)
 					if(!$counters['data']['mac_counter']){
-
 		                $used       = $this->Usage->data_usage($counters['data'],$username,'username');
 		                $perc_used  = intval(($used / $counters['data']['value'])* 100);                   
-		                $q_r        = $this->{'PermanentUsers'}->find()->where(['PermanentUsers.username' => $username])->first();
+		                $q_r        = $this->PermanentUsers->find()->where(['PermanentUsers.username' => $username])->first();
 		                if($q_r){
 		                    $io->info("Update usage percentage for $username to $perc_used");
 		                    $d = [];
 		                    $d['perc_data_used']	= $perc_used;
 							$d['data_used']		    = $used;
 							$d['data_cap']			= $counters['data']['value'];
+							
+							//Set the admin state as depleted when % used is more than 100
+							if($perc_used >= 100){
+							    $d['admin_state']   = 'depleted';
+							}else{
+							    $d['admin_state'] = 'active';
+							}						
 							$this->{'PermanentUsers'}->patchEntity($q_r,$d);
                             $this->{'PermanentUsers'}->save($q_r);
 		                }

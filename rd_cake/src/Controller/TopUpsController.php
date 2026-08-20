@@ -19,10 +19,11 @@ use App\Model\Table\PermanentUsersTable;
 use App\Model\Table\RadacctsTable;
 use App\Model\Table\UserStatsTable;
 
+use Cake\Log\Log;  // <-- Add this import
+
 
 class TopUpsController extends AppController{
   
-    public $base            = "Access Providers/Controllers/TopUps/";   
     protected $main_model   = 'TopUps';
     protected TopUpService $TopUpService;
     protected AuditLogService $AuditLogService;
@@ -376,6 +377,28 @@ class TopUpsController extends AppController{
     				$this->{'Radaccts'}->deleteAll(['Radaccts.username' => $username,'Radaccts.realm' => $realm]);
     			}
     		}
+    		
+    		//-- If PermanentUsers admin_state was set to 'depleted' re-instate it to 'active'
+    		$permanentUser = $this->PermanentUsers->find()
+    		    ->where([
+    		        'PermanentUsers.id' => $entity->permanent_user_id
+    		    ])
+    		    ->first();
+    		    
+    		if($permanentUser){ 
+                //Update the usage info for the user:
+    		    $output = shell_exec('bin/cake accounting ' . $permanentUser->username . ' 2>&1');
+    		    Log::write('info', sprintf(
+                    'User %s usage updated. Command feedback: %s', 
+                    $entity->username, $output
+                ));
+                //Re-auth for the new top-up values to be activated
+                $output = shell_exec('bin/cake re_auth_permanent_user ' . $permanentUser->id . ' 2>&1');                  
+                Log::write('info', sprintf(
+                    'User %d restored from %s to %s. Command feedback: %s', 
+                    $entity->id, $old_value, $new_value, $output
+                ));
+    		}   		
     		      
             $this->set([
                 'data'      => $retVal,

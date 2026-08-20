@@ -23,7 +23,6 @@ use App\Model\Table\PermanentUsersTable;
 class RadacctsFastController extends AppController {
 
     protected $main_model 	= 'Radaccts';
-    public $base    		= "Access Providers/Controllers/Radaccts/"; 
     protected $time_zone    = 'UTC'; //Default for timezone 
     protected  $fields  	= [
         'total_in' => 'sum(Radaccts.acctinputoctets)',

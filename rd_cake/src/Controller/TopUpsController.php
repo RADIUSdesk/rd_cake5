@@ -395,8 +395,8 @@ class TopUpsController extends AppController{
                 //Re-auth for the new top-up values to be activated
                 $output = shell_exec('bin/cake re_auth_permanent_user ' . $permanentUser->id . ' 2>&1');                  
                 Log::write('info', sprintf(
-                    'User %d restored from %s to %s. Command feedback: %s', 
-                    $entity->id, $old_value, $new_value, $output
+                    'User %d re-auth. Command feedback: %s', 
+                    $entity->id, $output
                 ));
     		}   		
     		      

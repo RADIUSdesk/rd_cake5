@@ -1868,7 +1868,7 @@ class MeshHelperComponent extends Component {
                 }
                                      
                 if(($ncs->grouping == 'wbw_info')&&($ncs->name == 'channel')){
-                    $this_unix = $ncs->modified->i18nFormat(Time::UNIX_TIMESTAMP_FORMAT);
+                    $this_unix = $ncs->modified->toUnixString(); // or $ncs->modified->getTimestamp()
                     if($this_unix > $unix_start){
                         $unix_start = $this_unix;
                         if($ncs->value < 14){

@@ -1826,7 +1826,13 @@ class GridButtonsFlatComponent extends Component {
     }
              
   	private function _fetchCrud(){
-		$menu = ['xtype' => 'buttongroup','title' => $this->t, 'items' => [
+		$menu = [
+		    'xtype' => 'buttongroup',
+		    'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false,   
+		    'items' => [
 				$this->btnReload,
 				$this->btnAdd,
 				$this->btnDelete,
@@ -1856,11 +1862,17 @@ class GridButtonsFlatComponent extends Component {
     
     private function _fetchAddAndDelete(){
     
-        $menu = ['xtype' => 'buttongroup', 'title' => $this->t, 'items' => [
-                    $this->btnReload,
-                    $this->btnAdd,
-                    $this->btnDelete,    
-                ]
+        $menu = [
+            'xtype' => 'buttongroup',
+            'title' => null,
+            'border' => false,
+            'bodyBorder' => false,
+            'frame' => false, 
+            'items' => [
+                $this->btnReload,
+                $this->btnAdd,
+                $this->btnDelete,    
+            ]
         ];
         return $menu;
     }

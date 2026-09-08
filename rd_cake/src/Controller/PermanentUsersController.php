@@ -1533,6 +1533,27 @@ class PermanentUsersController extends AppController{
         ]);
         $this->viewBuilder()->setOption('serialize', true);
     }
+    
+    public function navUserEdit(){
+
+        $items = [
+            [ 'id' => 'tabBasicInfo',           'text' => 'RADIUS Info',        'glyph' => 'x-fa fa-network-wired', 'type' => 'screen'],
+            [ 'id' => 'tabPersonalInfo',        'text' => 'Personal Info',      'glyph' => 'x-fa fa-user',          'type' => 'screen'],
+            [ 'id' => 'tabDevices',             'text' => 'Devices',            'glyph' => 'x-fa fa-laptop-code',   'type' => 'screen'],
+            [ 'id' => 'tabPrivateAttributes',   'text' => 'Private Attributes', 'glyph' => 'x-fa fa-fingerprint',   'type' => 'screen' ],
+            [ 'id' => 'tabAuthData',            'text' => 'Authentication',     'glyph' => 'x-fa fa-shield-alt',    'type' => 'screen' ],
+            [ 'id' => 'tabAcctData',            'text' => 'Accounting',         'glyph' => 'x-fa fa-history',       'type' => 'screen' ]            
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
+    
+    
 }
 
 ?>

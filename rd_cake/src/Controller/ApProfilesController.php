@@ -706,6 +706,7 @@ class ApProfilesController extends AppController {
                     'ap_id' => $apId,
                     'item IN' => ['ssid', 'key', 'vlan']
                 ])
+                ->all()
                 ->indexBy('item')
                 ->toArray();
 

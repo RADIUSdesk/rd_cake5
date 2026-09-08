@@ -821,5 +821,49 @@ class ApsController extends AppController {
             $i->gateway = 'yes';           
         }    
     }
+    
+    public function navAccessPointView(){
+
+        /*$items = [
+            [ 'id' => 'tabViewBandwidth',   'text' => 'BANDWIDTH MONITOR',  'glyph' => 'x-fa fa-tachometer-alt', 'type' => 'screen'],
+            [ 'id' => 'tabApViewSqm',       'text' => 'SQM STATS',          'glyph' => 'x-fa fa-sliders-h',      'type' => 'screen' ],
+            [ 'id' => 'tabApViewWan',       'text' => 'WAN STATS',          'glyph' => 'x-fa fa-globe',          'type' => 'screen' ],
+            [ 'id' => 'tabApViewVpn',       'text' => 'VPN CONNECTIONS',    'glyph' => 'x-fa fa-key',            'type' => 'screen' ], 
+            [ 'id' => 'tabApViewActions',   'text' => 'COMMAND EXECUTION',  'glyph' => 'x-fa fa-terminal',       'type' => 'screen' ],            
+        ];*/
+        
+        $items = [
+            [ 'id' => 'tabViewBandwidth',   'text' => 'Bandwidth Monitor',  'glyph' => 'x-fa fa-tachometer-alt', 'type' => 'screen'],
+            [ 'id' => 'tabApViewSqm',       'text' => 'SQM Stats',          'glyph' => 'x-fa fa-sliders-h',      'type' => 'screen' ],
+            [ 'id' => 'tabApViewWan',       'text' => 'WAN Stats',          'glyph' => 'x-fa fa-globe',          'type' => 'screen' ],
+            [ 'id' => 'tabApViewVpn',       'text' => 'VPN Connections',    'glyph' => 'x-fa fa-key',            'type' => 'screen' ], 
+            [ 'id' => 'tabApViewActions',   'text' => 'Command Execution',  'glyph' => 'x-fa fa-terminal',       'type' => 'screen' ],            
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
+    
+    public function navAccessPointEdit(){
+         
+         $items = [
+            [ 'id' => 'tabApGeneral',           'text' => 'General',        'glyph' => 'x-fa fa-cogs',              'type' => 'screen'],
+            [ 'id' => 'tabEntryPoints',         'text' => 'SSIDs',          'glyph' => 'x-fa fa-wifi',              'type' => 'screen'],
+            [ 'id' => 'tabExitPoints',          'text' => 'Exit Points',    'glyph' => 'x-fa fa-sign-out-alt',      'type' =>  'screen' ],
+            [ 'id' => 'tabAccessPointCommonSettings',      'text' => 'Common Settings','glyph' => 'x-fa fa-tools',             'type' =>  'screen' ],
+            [ 'id' => 'tabAccessPointAps',      'text' => 'Devices',        'glyph' => 'x-fa fa-microchip',         'type' =>  'screen' ]          
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
 
 }

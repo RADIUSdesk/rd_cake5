@@ -929,4 +929,20 @@ class VouchersController extends AppController{
         ]);
         $this->viewBuilder()->setOption('serialize', true); 
     }
+    
+    public function navVoucherEdit(){
+
+        $items = [
+            [ 'id' => 'tabBasicInfo',           'text' => 'RADIUS Info',        'glyph' => 'x-fa fa-network-wired', 'type' => 'screen'],
+            [ 'id' => 'tabPrivateAttributes',   'text' => 'Private Attributes', 'glyph' => 'x-fa fa-fingerprint',   'type' => 'screen' ],
+            [ 'id' => 'tabAcctData',            'text' => 'Accounting',         'glyph' => 'x-fa fa-history',       'type' => 'screen' ]            
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
 }

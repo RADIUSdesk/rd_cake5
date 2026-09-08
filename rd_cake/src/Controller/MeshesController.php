@@ -3304,6 +3304,48 @@ class MeshesController extends AppController{
         $this->viewBuilder()->setOption('serialize', true);
     }
     
+    public function navMeshView(){
+    
+        $items = [
+            [ 'id' => 'tabMeshViewOverwiew',    'text' => 'Overview',               'glyph' => 'x-fa fa-th-large',      'type' => 'screen'],
+            [ 'id' => 'tabMeshViewEntries',     'text' => 'SSID &#8660; Device',    'glyph' => 'x-fa fa-wifi',          'type' => 'screen'],
+            [ 'id' => 'tabMeshViewNodes',       'text' => 'Node &#8660; Device',    'glyph' =>  'x-fa fa-broadcast-tower',          'type' => 'screen'],
+            [ 'id' => 'tabMeshViewNodeNodes',   'text' => 'Node &#8660; Nodes',     'glyph' => 'x-fa fa-project-diagram','type' =>  'screen' ],
+            [ 'id' => 'tabMeshViewNodeDetails', 'text' => 'Nodes',                  'glyph' =>  'x-fa fa-sitemap',       'type' =>  'screen' ],
+            [ 'id' => 'cMeshEdit',              'text' => 'Edit Mesh',              'glyph' => 'x-fa fa-edit',          'type' =>  'link' ]            
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+    
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
+    
+    public function navMeshEdit(){
+    
+        $items = [
+            [ 'id' => 'tabMeshGeneral',         'text' => 'General',        'glyph' => 'x-fa fa-cogs',              'type' => 'screen'],
+            [ 'id' => 'tabEntryPoints',         'text' => 'Entry Points',   'glyph' => 'x-fa fa-sign-in-alt',       'type' => 'screen'],
+            [ 'id' => 'tabMeshSettings',        'text' => 'Mesh Settings',  'glyph' => 'x-fa fa-project-diagram',   'type' => 'screen'],
+            [ 'id' => 'tabExitPoints',          'text' => 'Exit Points',    'glyph' => 'x-fa fa-sign-out-alt',      'type' =>  'screen' ],
+            [ 'id' => 'tabNodeCommonSettings',  'text' => 'Node Settings',  'glyph' => 'x-fa fa-tools',             'type' =>  'screen' ],
+            [ 'id' => 'tabNodes',               'text' => 'Nodes',          'glyph' => 'x-fa fa-sitemap',           'type' =>  'screen' ],
+            [ 'id' => 'cMeshView',              'text' => 'View Mesh',      'glyph' => 'x-fa fa-search',            'type' =>  'link' ]            
+        ];
+    
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+    
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
+    
+    
+    //=== PRIVATE FUNCTIONS ONWARDS ====
+    
     private function _getDefaultSettings(){
     
         $data  = Configure::read('common_node_settings'); //Read the defaults

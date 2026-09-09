@@ -1553,6 +1553,22 @@ class PermanentUsersController extends AppController{
         $this->viewBuilder()->setOption('serialize', true);   
     }
     
+     public function navUserGraphs(){
+
+        $items = [
+            [ 'id' => 'daily',      'text' => 'Daily',      'glyph' => 'x-fa fa-calendar',      'type' => 'screen'],
+            [ 'id' => 'weekly',     'text' => 'Weekly',     'glyph' => 'x-fa fa-calendar-plus',  'type' => 'screen'],
+            [ 'id' => 'monthly',    'text' => 'Monthly',    'glyph' => 'x-fa fa-calendar-times', 'type' => 'screen'],           
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
+    
     
 }
 

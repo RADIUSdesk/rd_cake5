@@ -1670,7 +1670,7 @@ class DynamicDetailsController extends AppController{
 		        $_SERVER['QUERY_STRING'] = $_SERVER['QUERY_STRING'].'&dynamic_id='.$req_q['dynamic_id'].'&uamip=10.1.0.1&uamport=3990';
 		    }   
 	    }else{
-		    $q_r = $this->{$this->modelClass}->get($req_q['dynamic_id']);
+		    $q_r = $this->{$this->main_model}->get($req_q['dynamic_id']);
         }
       	
 		//See which Theme are selected

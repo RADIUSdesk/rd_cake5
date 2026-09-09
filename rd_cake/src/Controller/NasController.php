@@ -425,7 +425,7 @@ class NasController extends AppController{
             
             	$cdata['id'] = $modelEntity->id;
 				if($cdata['monitor'] == 'off'){   //Clear the last contact when off
-					$this->{$this->modelClass}->NaStates->deleteAll(['na_id' => $cdata['id']], false);
+					$this->{$this->main_model}->NaStates->deleteAll(['na_id' => $cdata['id']], false);
 				}
                 $this->set([
                     'success' => true

@@ -1560,7 +1560,28 @@ class DynamicDetailsController extends AppController{
         $this->viewBuilder()->setOption('serialize', true);
     }
     
+    public function navDynamicDetailEdit(){
+
+        $items = [
+            [ 'id' => 'tabDetail',          'text' => 'Detail',             'glyph' => 'x-fa fa-info-circle',  'type' => 'screen'],
+            [ 'id' => 'tabSettings',        'text' => 'Settings',           'glyph' => 'x-fa fa-cogs',         'type' => 'screen'],
+            [ 'id' => 'tabLogo',            'text' => 'Logo',               'glyph' => 'x-fa fa-image',        'type' => 'screen'],
+            [ 'id' => 'tabPhoto',           'text' => 'Photos',             'glyph' => 'x-fa fa-images',       'type' => 'screen'],
+            [ 'id' => 'tabPages',           'text' => 'Own Pages',          'glyph' => 'x-fa fa-file-alt',     'type' => 'screen'],
+            [ 'id' => 'tabPairs',           'text' => 'Dynamic Keys',       'glyph' => 'x-fa fa-key',          'type' => 'screen'], 
+            [ 'id' => 'tabClickToConect',   'text' => 'Click To Connect',   'glyph' => 'x-fa fa-link',         'type' => 'screen'], 
+            [ 'id' => 'tabSocialLogin',     'text' => 'Social Login',       'glyph' => 'x-fa fa-share-alt',    'type' => 'screen']              
+        ];
+
+        $this->set([
+            'items'     => $items,
+            'success'   => true,
+        ]);
+
+        $this->viewBuilder()->setOption('serialize', true);   
+    }
     
+     
     private function _find_username_and_password($id){
     
         $this->PermanentUsers  = $this->fetchTable('PermanentUsers');

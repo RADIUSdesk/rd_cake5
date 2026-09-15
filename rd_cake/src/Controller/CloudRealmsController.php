@@ -49,7 +49,6 @@ class CloudRealmsController extends AppController {
     
     protected CloudsTable $Clouds;
     protected RealmsTable $Realms;
-    protected UsersTable $Users;
     protected CloudAdminsTable $CloudAdmins;
     protected RealmAdminsTable $RealmAdmins;
     
@@ -58,7 +57,6 @@ class CloudRealmsController extends AppController {
         
         $this->Clouds         = $this->fetchTable('Clouds');
         $this->Realms         = $this->fetchTable('Realms');
-        $this->Users          = $this->fetchTable('Users');
         $this->CloudAdmins    = $this->fetchTable('CloudAdmins');
         $this->RealmAdmins    = $this->fetchTable('RealmAdmins');
            

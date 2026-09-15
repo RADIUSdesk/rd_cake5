@@ -70,6 +70,125 @@ class PermanentUsersController extends AppController{
     public function exportCsv(){
 
         $user = $this->_ap_right_check();
+        if (!$user) {
+            return;
+        }
+
+        $req_q    = $this->request->getQuery();
+        $cloud_id = $req_q['cloud_id'] ?? null;
+
+        // --- 1. Parse columns ONCE ---
+        $columns = [];
+        if (isset($req_q['columns'])) {
+            $columns = json_decode($req_q['columns'], true) ?: [];
+        }
+
+        $columnNames    = array_column($columns, 'name');
+        $needsCleartext = in_array('cleartext_password', $columnNames, true);
+        $needsFramedIp  = in_array('framedipaddress', $columnNames, true);
+        $needsLastSeen  = in_array('last_seen', $columnNames, true);
+
+        // --- 2. Main query — select only needed columns ---
+        $query = $this->{$this->main_model}->find();
+        $this->CommonQueryFlat->build_cloud_query($query, $cloud_id);
+
+        // If you know the columns you need, select them explicitly to save memory:
+        $selectFields = array_intersect(
+            $columnNames,
+            $this->{$this->main_model}->getSchema()->columns()
+        );
+        $selectFields[] = 'username'; // always need for joins
+        $selectFields[] = 'id';
+        $query->select(array_unique($selectFields));
+
+        // --- 3. Bulk-load last sessions for all users ---
+        $lastSessions = [];
+        if ($needsFramedIp || $needsLastSeen) {
+            // Get usernames first (cheap, single column)
+            $usernames = $query->select(['username'])->all()->extract('username')->toList();
+
+            if ($usernames) {
+                // One query: latest acct per username
+                // Note: relies on MySQL "GROUP BY ... MAX" trick; adjust for portability
+                $sub = $this->Radaccts->find()
+                    ->select(['username', 'max_start' => 'MAX(acctstarttime)'])
+                    ->where(['username IN' => $usernames])
+                    ->group(['username']);
+
+                // Join back to get the framedipaddress of that max row
+                $sessions = $this->Radaccts->find()
+                    ->select(['username', 'acctstarttime', 'acctstoptime', 'framedipaddress'])
+                    ->where([
+                        'username IN' => $usernames,
+                        // composite match — simplest portable form:
+                    ])
+                    ->orderBy(['username' => 'ASC', 'acctstarttime' => 'DESC'])
+                    ->all();
+
+                foreach ($sessions as $s) {
+                    if (!isset($lastSessions[$s->username])) {
+                        $lastSessions[$s->username] = $s; // first = latest due to ordering
+                    }
+                }
+            }
+        }
+
+        // --- 4. Stream the CSV directly ---
+        $this->response = $this->response->withDownload('PermanentUsers.csv');
+        $this->response = $this->response->withType('text/csv');
+
+        // Disable view rendering
+        $this->viewBuilder()->setClassName('CsvView.Csv');
+
+        // --- 5. Build data lazily (still needed by CsvView, but reduce copies) ---
+        $data = [];
+        $data[] = array_column($columns, 'name');
+
+        // Re-run main query (or iterate without hydrating — see note below)
+        foreach ($query->all() as $i) {
+            $csvLine = [];
+            foreach ($columnNames as $columnName) {
+                switch ($columnName) {
+                    case 'cleartext_password':
+                        $csvLine[] = $needsCleartext
+                            ? $this->{$this->main_model}->getCleartextPassword($i->username)
+                            : '';
+                        break;
+
+                    case 'framedipaddress':
+                        $s = $lastSessions[$i->username] ?? null;
+                        $csvLine[] = $s ? ($s->framedipaddress ?? '') : '';
+                        break;
+
+                    case 'last_seen':
+                        $s = $lastSessions[$i->username] ?? null;
+                        if ($s && !$s->acctstoptime) {
+                            $online = $this->TimeCalculations
+                                ->time_elapsed_string($s->acctstarttime, false, true);
+                            $csvLine[] = 'online ' . $online;
+                        } else {
+                            $csvLine[] = '';
+                        }
+                        break;
+
+                    default:
+                        $csvLine[] = $i->{$columnName} ?? '';
+                }
+            }
+            $data[] = $csvLine;
+        }
+        
+        $this->setResponse($this->getResponse()->withDownload('PermanentUsers.csv'));
+        $this->viewBuilder()->setClassName('CsvView.Csv');
+        $this->set([
+            'data' => $data
+        ]);         
+        $this->viewBuilder()->setOption('serialize', true);
+    }
+    
+    public function exportCsvZZ(){
+
+        $user = $this->_ap_right_check();
         if(!$user){
             return;
         }

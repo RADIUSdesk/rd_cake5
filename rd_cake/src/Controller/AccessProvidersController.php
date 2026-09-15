@@ -18,7 +18,7 @@ use Cake\Utility\Inflector;
 use App\Model\Table\UsersTable;
 use App\Model\Table\GroupsTable;
 use App\Model\Table\UserSettingsTable;
-
+use Cake\Utility\Text;
 
 class AccessProvidersController extends AppController{
       
@@ -217,8 +217,8 @@ class AccessProvidersController extends AppController{
         $group_id   = $q_r->id;
         $req_d['group_id'] = $group_id;
 
-        //Zero the token to generate a new one for this user:
-        $req_d['token'] = '';
+        //Generate a new one for this user:
+        $req_d['token'] = Text::uuid();
 
         //The rest of the attributes should be same as the form..
         $entity = $this->{$this->main_model}->newEntity($req_d); 
@@ -499,7 +499,7 @@ class AccessProvidersController extends AppController{
             $entity = $this->{$this->main_model}->get($req_d['user_id']); 
             $data = [
                 'password'  => $req_d['password'],
-                'token'     => ''
+                'token'     => Text::uuid(),
             ];
             $this->{$this->main_model}->patchEntity($entity, $data);
             $this->{$this->main_model}->save($entity);

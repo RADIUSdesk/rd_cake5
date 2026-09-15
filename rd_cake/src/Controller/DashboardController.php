@@ -15,6 +15,8 @@ use App\Model\Table\CloudsTable;
 use App\Model\Table\UserSettingsTable;
 use App\Model\Table\CloudAdminsTable;
 
+use Cake\Utility\Text;
+
 class DashboardController extends AppController{
 
     protected UsersTable $Users;
@@ -569,7 +571,7 @@ class DashboardController extends AppController{
         $u          = $this->Users->get($user_id);
         
         $u->set('password',$this->request->getData('password'));
-        $u->set('token',''); //Setting it ti '' will trigger a new token generation
+        $u->set('token',Text::uuid());
         $this->Users->save($u); 
         $data['token']  = $u->get('token');
         

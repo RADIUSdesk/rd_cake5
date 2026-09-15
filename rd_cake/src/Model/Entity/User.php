@@ -26,11 +26,12 @@ class User extends Entity{
         return null;
     }
 
-    protected function _setToken($value){
+    //Sep 2026 - Rather set it in the controller
+    /*protected function _setToken($value){
         if ($value === '') {
             return Text::uuid();
         }
 
         return $value;
-    }
+    }*/
 }

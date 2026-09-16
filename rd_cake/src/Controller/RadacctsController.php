@@ -565,11 +565,11 @@ class RadacctsController extends AppController {
         //FIXME We need to find a creative wat to determine if the Access Provider can delete this accounting data!!!
 	     if(isset($req_d['id'])){
             //$this->_voucher_status_check($req_d['id']);
-            $this->{$this->workingModel}->query()->delete()->where(['radacctid' => $req_d['id']])->execute();
+            $this->{$this->workingModel}->deleteQuery()->where(['radacctid' => $req_d['id']])->execute();
         }else{                          //Assume multiple item delete
             foreach($req_d as $d){ 
                 //$this->_voucher_status_check($d['id']);
-                $this->{$this->workingModel}->query()->delete()->where(['radacctid' => $d['id']])->execute();
+                $this->{$this->workingModel}->deleteQuery()->where(['radacctid' => $d['id']])->execute();
             }         
         }
 

@@ -267,10 +267,10 @@ class ApActionsController extends AppController {
 
 	    if(isset($req_d['id'])){   //Single item delete
             $message = "Single item ".$this->data['id'];
-            $this->{$this->main_model}->query()->delete()->where(['id' => $req_d['id']])->execute();
+            $this->{$this->main_model}->deleteQuery()->where(['id' => $req_d['id']])->execute();
         }else{                          //Assume multiple item delete
             foreach($req_d as $d){
-                $this->{$this->main_model}->query()->delete()->where(['id' => $d['id']])->execute();
+                $this->{$this->main_model}->deleteQuery()->where(['id' => $d['id']])->execute();
             }
         }
 

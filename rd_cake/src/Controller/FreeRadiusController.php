@@ -390,7 +390,7 @@ class FreeRadiusController extends AppController {
         //Clear the timeout
         $this->Checks = $this->fetchTable('Checks');
 
-        $this->Checks->query()->delete()->where(['Checks.name' => 'debug_timeout'])->execute();
+        $this->Checks->deleteQuery()->where(['Checks.name' => 'debug_timeout'])->execute();
 
         $this->set([
             'data'          => $items,

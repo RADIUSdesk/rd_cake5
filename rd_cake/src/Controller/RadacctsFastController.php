@@ -256,11 +256,11 @@ class RadacctsFastController extends AppController {
         //FIXME We need to find a creative wat to determine if the Access Provider can delete this accounting data!!!
 	     if(isset($req_d['id'])){
             //$this->_voucher_status_check($req_d['id']);
-            $this->{$this->main_model}->query()->delete()->where(['radacctid' => $req_d['id']])->execute();
+            $this->{$this->main_model}->deleteQuery()->where(['radacctid' => $req_d['id']])->execute();
         }else{                          //Assume multiple item delete
             foreach($req_d as $d){ 
                 //$this->_voucher_status_check($d['id']);
-                $this->{$this->main_model}->query()->delete()->where(['radacctid' => $d['id']])->execute();
+                $this->{$this->main_model}->deleteQuery()->where(['radacctid' => $d['id']])->execute();
             }         
         }
 

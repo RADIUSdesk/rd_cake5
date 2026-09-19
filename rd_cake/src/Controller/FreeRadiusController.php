@@ -483,7 +483,9 @@ class FreeRadiusController extends AppController {
         $fail_flag      = true;
 
         $send_data      = [];
+        $send_data_exp  = [];
         $receive_data   = [];
+        $re_data_exp    = [];
 
         $line           = 0;
 
@@ -506,13 +508,29 @@ class FreeRadiusController extends AppController {
 
             if(($send_flag == true) && ($line > $send_line)){
                 if($i !=''){
-                    array_push($send_data,$i);
+                    array_push($send_data,$i);                    
+                    [$attribute, $value] = explode('=', $i, 2);
+                    $attribute  = trim($attribute);
+                    $value      = trim($value, ' "');
+                    if(($attribute == 'User-Name')||($attribute == 'User-Password')){
+                        $result = [
+                            'attribute' => $attribute,
+                            'value'     => $value
+                        ];
+                        $send_data_exp[] = $result;
+                    }                   
                 }   
             }
 
             if(($receive_flag == true) && ($line > $receive_line)){
                 if($i !=''){
                     array_push($receive_data,$i);
+                    [$attribute, $value] = explode('=', $i, 2);
+                    $result = [
+                        'attribute' => trim($attribute),
+                        'value'     => trim($value, ' "'),
+                    ];
+                    $re_data_exp[] = $result;                 
                 }    
             }
 
@@ -520,7 +538,9 @@ class FreeRadiusController extends AppController {
         }
 
         $items['send']      = $send_data;
+        $items['send_exp']  = $send_data_exp;
         $items['received']  = $receive_data;
+        $items['re_exp']    = $re_data_exp;
         $items['failed']    = $fail_flag;
 
         $this->set([

@@ -504,6 +504,10 @@ class GridButtonsFlatComponent extends Component {
                 'admin' => '_fetchReloadDelete',
                 'view'  => '_fetchReload'
             ],
+            'FrAdvAcct'     => [
+                'admin' => '_fetchAdvAcctAdmin',
+                'view'  => '_fetchAdvAcctView'
+            ],
             'PermanentUsers' => [
                 'admin' => function() {
                     return [
@@ -658,6 +662,10 @@ class GridButtonsFlatComponent extends Component {
         } 
         
         if($type == 'FrAcctAndAuth'){
+            $menu = $this->_getButtonsByTypeAndRights($type,$right);    
+        }
+        
+        if($type == 'FrAdvAcct'){
             $menu = $this->_getButtonsByTypeAndRights($type,$right);    
         }
         //============================      
@@ -1578,18 +1586,136 @@ class GridButtonsFlatComponent extends Component {
     
     private function _fetchReload(){
         return [
-                ['xtype' => 'buttongroup','title' => null, 'items' => [
-                    $this->btnReload
-            ]] 
+                [
+                    'xtype' => 'buttongroup',
+                    'title' => null,
+                    'border' => false,
+                    'bodyBorder' => false,
+                    'frame' => false, 
+                    'items' => [
+                        $this->btnReload
+                ]
+            ] 
         ];
     }
     
     private function _fetchReloadDelete(){
         return [
-                ['xtype' => 'buttongroup','title' => null, 'items' => [
-                   $this->btnReload,
-                   $this->btnDelete, 
-            ]] 
+                [
+                    'xtype' => 'buttongroup',
+                    'title' => null,
+                    'border' => false,
+                    'bodyBorder' => false,
+                    'frame' => false, 
+                    'items' => [
+                        $this->btnReload,
+                        $this->btnDelete, 
+                    ]
+            ] 
+        ];
+    }
+    
+    private function _fetchAdvAcctAdmin(){
+        return [               
+            $this->_fetchRadacctsBasic(),
+            [ 'xtype' => 'tbseparator'],
+            [
+                'xtype'   => 'component', 
+                'itemId'  => 'totals',  
+                 'tpl' => [
+                        '<div class="radacct-stats">',
+
+                            '<tpl if="activeData == true">',
+                                '<div class="stat-item">',
+                                    '<i class="fa fa-arrow-down"></i>',
+                                    '<span class="value">{in}</span>',
+                                    '<span class="label">In</span>',
+                                '</div>',
+
+                                '<div class="stat-item">',
+                                    '<i class="fa fa-arrow-up"></i>',
+                                    '<span class="value">{out}</span>',
+                                    '<span class="label">Out</span>',
+                                '</div>',
+
+                                '<div class="stat-item">',
+                                    "<span class='fa' style='font-family:FontAwesome;'>&#xf0ec</span>",
+                                    '<span class="value">{total}</span>',
+                                    '<span class="label">Total</span>',
+                                '</div>',
+                            '</tpl>',
+                            '<div class="stat-item">',
+                                '<i class="fa fa-users"></i>',
+                                '<span class="value">{total_connected}</span>',
+                                '<span class="label">Sessions</span>',
+                            '</div>',
+
+                        '</div>'           
+                ],
+                'data'   =>  [],
+                'cls'    => 'lblRd'
+            ]            
+        ];
+    }
+    
+    private function _fetchRadacctsBasic(){    
+        $menu   = [
+            'xtype'         => 'buttongroup',
+            'title'         => null,
+            'border'        => false,
+            'bodyBorder'    => false,
+            'frame'         => false, 
+            'items' => [
+                $this->btnReloadTimer,
+                [
+                    'xtype' => 'tbseparator'
+                ],
+                [
+                        'xtype'         => 'button',                        
+                        //To list all
+                        //'glyph'         => Configure::read('icnWatch'),
+                        //'pressed'       => false,
+                                                
+                        //To list only active
+                        'glyph'         => Configure::read('icnLight'),
+                        'pressed'       => true,
+                                                    
+                        'scale'         => 'large',
+                        'itemId'        => 'connected',
+                        'enableToggle'  => true,                        
+                        'ui'            => 'button-green',  
+                        'tooltip'       => __('Show only currently connected')
+                ],
+                [
+                    'xtype' => 'tbseparator'
+                ],
+                [
+                    'xtype'         => 'cmbTimezones', 
+                    'width'         => 200, 
+                    'itemId'        => 'cmbTimezone',
+                    'name'          => 'timezone_id', 
+                    'fieldLabel'    => '',
+                    'padding'       => '7 0 0 0',
+                    'margin'        => 0,
+                    'value'         => $this->getController()->timezone_id
+                ]              
+            ]
+        ];
+        return $menu;    
+    }
+    
+    private function _fetchAdvAcctView(){
+        return [
+                [
+                    'xtype' => 'buttongroup',
+                    'title' => null,
+                    'border' => false,
+                    'bodyBorder' => false,
+                    'frame' => false, 
+                    'items' => [
+                        $this->btnReload
+                    ]
+            ] 
         ];
     }
        

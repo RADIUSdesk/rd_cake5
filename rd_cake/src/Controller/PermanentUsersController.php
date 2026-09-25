@@ -1628,8 +1628,15 @@ class PermanentUsersController extends AppController{
             return;
         }
         
-        $right  = $this->Aa->rights_on_cloud();
-        $menu = $this->GridButtonsFlat->returnButtons(false,'FrAcctAndAuth',$right);
+        $this->timezone_id  = 316; //London by default  
+        $e_user             = $this->Users->find()->where(['Users.id' => $user['id']])->first();
+        if($e_user->timezone_id){
+            $this->timezone_id = $e_user->timezone_id;
+        } 
+        
+        $right  = $this->Aa->rights_on_cloud();        
+        $menu   = $this->GridButtonsFlat->returnButtons(false,'FrAdvAcct',$right);
+        
         $this->set([
             'items'     => $menu,
             'success'   => true

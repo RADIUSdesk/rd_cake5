@@ -82,16 +82,28 @@ class UserStatsController extends AppController {
             $ret_info    = $this->_getMonthly($ft_day);  
         }
         
+        $type = $this->request->getQuery('type');
+                
+        $metaData = [
+            'totalIn'       => $ret_info['total_in'],
+            'totalOut'      => $ret_info['total_out'],
+            'totalInOut'    => $ret_info['total_in_out']
+        ];
+        
+        if($type == 'device'){
+            $username = $this->request->getQuery('username');
+            $alias = $this->_lookForAlias($username);
+            if($alias){
+                $metaData['alias'] = $alias;
+            }       
+        }
+        
         if($ret_info){
             $this->set([
                 'items'         => $ret_info['items'],
                 'success'       => true,
                 //This is actually the correct way / place for meta-data
-                'metaData'      => [
-                    'totalIn'       => $ret_info['total_in'],
-                    'totalOut'      => $ret_info['total_out'],
-                    'totalInOut'    => $ret_info['total_in_out'],
-                ],
+                'metaData'      => $metaData,
                 'totalIn'       => $ret_info['total_in'],
                 'totalOut'      => $ret_info['total_out'],
                 'totalInOut'    => $ret_info['total_in_out']
@@ -404,6 +416,24 @@ class UserStatsController extends AppController {
                 } 
             }
         }
+    }
+    
+    private function _lookForAlias($callingstationid){
+    
+        $cloud_id   = $this->request->getQuery('cloud_id');
+        $ids        = $this->fetchTable('Stations');
+        $aliases    = $this->fetchTable('StationAliases');
+        $alias      = false;       
+        $station = $ids->find()
+            ->contain(['StationAliases' => function ($q) use ($cloud_id) {
+                return $q->where(['StationAliases.cloud_id' => $cloud_id]);
+            }])
+            ->where(['Stations.callingstationid' => $callingstationid])
+            ->first();  
+        if($station){
+            $alias = collection($station->station_aliases)->first()->alias ?? false;
+        }
+        return $alias;   
     }
 
 }

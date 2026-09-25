@@ -664,11 +664,11 @@ class GridButtonsRbaComponent extends Component {
                 [
                         'xtype'         => 'button',                        
                         //To list all
-                        //'glyph'         => Configure::read('icnWatch'),
+                        'glyph'         => Configure::read('icnWatch'),
                         //'pressed'       => false,
                                                 
                         //To list only active
-                        'glyph'         => Configure::read('icnLight'),
+                       // 'glyph'         => Configure::read('icnLight'),
                         'pressed'       => true,
                                                     
                         'scale'         => 'large',

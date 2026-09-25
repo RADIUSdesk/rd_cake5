@@ -25,6 +25,10 @@ use App\Model\Table\RealmsTable;
 use App\Model\Table\MacUsagesTable;
 use App\Model\Table\DynamicClientsTable;
 
+//Stations and StationAliases
+use App\Model\Table\StationsTable;
+use App\Model\Table\StationAliasesTable;
+
 class RadacctsController extends AppController {
 
     protected $main_model 	= 'Radaccts';
@@ -48,6 +52,9 @@ class RadacctsController extends AppController {
     protected TimezonesTable $Timezones;
     protected UsersTable $Users;
     protected VouchersTable $Vouchers;
+    
+    protected StationsTable $Stations;
+    protected StationsAliasesTable $StationAliasess;
     
     protected $flagAfter    = 7; //Flag active entries that have not been updated after this many hours - Also set it the RadiusDesk config file here only a fallback if not in config file
     
@@ -430,6 +437,7 @@ class RadacctsController extends AppController {
 
         $user_id        = $user['id'];         
         $only_connected = $this->request->getQuery('only_connected');
+        $cloud_id       = $this->request->getQuery('cloud_id');
        
         if($only_connected == 'false'){
             $this->workingModel = 'RadacctHistories';
@@ -491,6 +499,26 @@ class RadacctsController extends AppController {
         if(Configure::read('radacct.flag_stale_after')){
             $this->flagAfter = Configure::read('radacct.flag_stale_after');
         }
+        
+        //-- Sept 2026 --
+        $station_alias = [];
+        if($total > 0){
+        
+            $this->StationAliases = $this->fetchTable('StationAliases');
+            $aliases = $this->StationAliases->find()
+                ->where([
+                    'StationAliases.cloud_id' => $cloud_id
+                ])
+                ->contain(['Stations'])
+                ->all();
+            foreach($aliases as $alias){
+                $callingstationid = $alias->station->callingstationid;
+                $station_alias[$callingstationid] = $alias->alias;
+            }
+        }        
+        //-- END Sept 2026 --
+        
+        
 
         $items  = [];
         foreach($q_r as $i){
@@ -518,7 +546,7 @@ class RadacctsController extends AppController {
             $i->acctstarttime   = $i->acctstarttime->setTimezone($tz)->format('Y-m-d H:i:s');
             $i->id              = $i->radacctid;
             $i->acctstoptime    = $online_time;
-            
+                       
             if($i->permanent_user){
             
                 $i->pu_admin_state  = $i->permanent_user->admin_state;
@@ -526,6 +554,10 @@ class RadacctsController extends AppController {
                 $i->pu_site         = $i->permanent_user->site;
                 $i->pu_extra_name   = $i->permanent_user->extra_name;
                 $i->pu_extra_value  = $i->permanent_user->extra_value;
+            }
+            
+            if(isset($station_alias[$i->callingstationid])){
+                $i->alias = $station_alias[$i->callingstationid];
             }
                                           
             array_push($items,$i);
@@ -692,6 +724,52 @@ class RadacctsController extends AppController {
         ]);
         $this->viewBuilder()->setOption('serialize', true);
     }
+    
+    
+    public function addStationAlias(){
+    
+        $user = $this->Aa->user_for_token($this);
+        if(!$user){   //If not a valid user
+            return;
+        }
+        
+        $postData   = $this->request->getData();  
+        $ids        = $this->fetchTable('Stations');
+        $aliases    = $this->fetchTable('StationAliases');
+        
+        if($postData['callingstationid']){
+            $id = $postData['callingstationid'];
+            $station = $ids->find()->where(['Stations.callingstationid' => $id])->first();
+            if(!$station){
+                $station = $ids->newEntity($postData);
+                $ids->save($station);
+            }
+            $station_id = $station->id;
+            $cloud_id   = $postData['cloud_id'];
+            $alias_txt  = $postData['alias'];
+            $alias      = $aliases->find()
+                ->where(
+                    [
+                        'StationAliases.cloud_id'   => $cloud_id,
+                        'StationAliases.station_id' => $station_id                               
+                    ]
+                )
+                ->first();
+            if(!$alias){
+                $alias = $aliases->newEntity(['cloud_id' => $cloud_id, 'alias' => $alias_txt, 'station_id' => $station_id]);                     
+            }else{
+                $alias->alias = $alias_txt;
+            }            
+            $aliases->save($alias);                 
+        }
+    
+        $this->set([
+            'success' => true
+        ]);
+        $this->viewBuilder()->setOption('serialize', true);
+    
+    }
+       
 
     //--------- END BASIC CRUD ---------------------------
 
@@ -872,7 +950,7 @@ class RadacctsController extends AppController {
                 });
             }
          }
-           
+                    
         //====== CLOUD's Realms FILTER =====  	
       	$realm_list = [];
       	$found_realm  = false;

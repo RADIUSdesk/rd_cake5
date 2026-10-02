@@ -94,6 +94,7 @@ class ApProfilesController extends AppController {
         $this->loadComponent('TimeCalculations');
         $this->loadComponent('JsonErrors');
         $this->loadComponent('Schedule');
+        $this->loadComponent('ConnectAndRedirect');
         
         $this->loadComponent('CommonQueryFlat', [ //Very important to specify the Model
             'model' => 'ApProfiles'
@@ -1099,7 +1100,7 @@ class ApProfilesController extends AppController {
 			    
 			    $ent_cp = $this->ApProfileExitCaptivePortals->newEntity($req_d);
 			    
-			    if(!($this->{'ApProfileExitCaptivePortals'}->save($ent_cp))){
+			    if(!($this->ApProfileExitCaptivePortals->save($ent_cp))){
                     $this->{'ApProfileExits'}->delete($entity);
                     $message = __('Could not update item');
                     $this->JsonErrors->entityErros($ent_cp,$message); 
@@ -1199,10 +1200,11 @@ class ApProfilesController extends AppController {
         if ($this->request->is('post')) {
         
         	$req_d 			= $this->request->getData();
+        	$cloud_id       = $req_d['cloud_id'];
         	$g_check_items 	= [
 				'apply_firewall_profile',
 				'apply_sqm_profile',
-				'collect_network_stats'
+				'collect_network_stats',
 			];
 			foreach($g_check_items as $i){
 			   	if(isset($req_d[$i])){
@@ -1291,7 +1293,8 @@ class ApProfilesController extends AppController {
                         'uamanydns',
                         'dnsparanoia',
                         'dnsdesk',
-                        'softflowd_enabled'
+                        'softflowd_enabled',
+                        'connect_and_redirect' //Oct 2026 Special UAM URL Modification
 					];
 					foreach($check_items as $i){
 						 if(isset($req_d[$i])){
@@ -1314,10 +1317,12 @@ class ApProfilesController extends AppController {
                    // print_r($cp_data);
                    $this->{'ApProfileExitCaptivePortals'}->patchEntity($ent_cp, $cp_data);
                    
-                   if(!($this->{'ApProfileExitCaptivePortals'}->save($ent_cp))){
+                   if(!($this->ApProfileExitCaptivePortals->save($ent_cp))){         
                         $message = __('Could not update item');
                         $this->JsonErrors->entityErros($ent_cp,$message); 
                         return;
+                    }else{
+                        $this->ConnectAndRedirect->updateApCaptivePortal($ent_cp,$cloud_id);
                     }
                 }
             }

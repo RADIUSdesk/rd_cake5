@@ -27,8 +27,6 @@ $config['common_ap_settings']['tz_name']	        = 'Africa/Johannesburg'; 	//Tak
 $config['common_ap_settings']['tz_value']	        = 'SAST-2'; 	//Take the name from $config['ApProfiles']['countries']
 
 
-
-
 //Gateway specific tweaks
 $config['common_ap_settings']['gw_dhcp_timeout']  = 120;	//
 $config['common_ap_settings']['gw_use_previous']  = true;	//	

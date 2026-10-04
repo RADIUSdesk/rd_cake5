@@ -14,6 +14,8 @@ use GeoIp2\Database\Reader;
 use Cake\I18n\DateTime;
 use Cake\Cache\Cache;
 
+use App\Service\ConnectAndRedirectService;
+
 use App\Model\Table\ApProfilesTable;
 use App\Model\Table\ApsTable;
 use App\Model\Table\UsersTable;
@@ -63,6 +65,8 @@ class ApProfilesController extends AppController {
     protected ApWifiSettingsTable $ApWifiSettings;
     protected UserSettingsTable $UserSettings;
     protected ApProfileExitsTable $ApProfileExits;
+    
+    protected ConnectAndRedirectService $connectAndRedirectService;
 
     public function initialize():void
     {
@@ -94,11 +98,12 @@ class ApProfilesController extends AppController {
         $this->loadComponent('TimeCalculations');
         $this->loadComponent('JsonErrors');
         $this->loadComponent('Schedule');
-        $this->loadComponent('ConnectAndRedirect');
-        
+      
         $this->loadComponent('CommonQueryFlat', [ //Very important to specify the Model
             'model' => 'ApProfiles'
         ]);
+        
+        $this->connectAndRedirectService = new ConnectAndRedirectService();
     }
 
     //____ BASIC CRUD Manager ________
@@ -974,6 +979,7 @@ class ApProfilesController extends AppController {
         }
 
 		$req_d 		= $this->request->getData();
+		$cloud_id   = $req_d['cloud_id'];
 		
 		$check_items = [
 			'apply_firewall_profile',
@@ -1105,6 +1111,8 @@ class ApProfilesController extends AppController {
                     $message = __('Could not update item');
                     $this->JsonErrors->entityErros($ent_cp,$message); 
                     return;
+                }else{
+                    $this->connectAndRedirectService->updateApCaptivePortal($ent_cp,$cloud_id);
                 }
             }
             //==== End of Captive Portal ====
@@ -1322,7 +1330,7 @@ class ApProfilesController extends AppController {
                         $this->JsonErrors->entityErros($ent_cp,$message); 
                         return;
                     }else{
-                        $this->ConnectAndRedirect->updateApCaptivePortal($ent_cp,$cloud_id);
+                        $this->connectAndRedirectService->updateApCaptivePortal($ent_cp,$cloud_id);
                     }
                 }
             }

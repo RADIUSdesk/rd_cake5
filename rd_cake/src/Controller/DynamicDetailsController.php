@@ -12,6 +12,7 @@ use Cake\Core\Configure;
 use Cake\Core\Configure\Engine\PhpConfig;
 
 use Cake\Utility\Inflector;
+use Detection\MobileDetect;
 
 use App\Model\Table\DynamicDetailsTable;
 use App\Model\Table\DynamicPairsTable;
@@ -57,9 +58,13 @@ class DynamicDetailsController extends AppController{
         $this->loadComponent('JsonErrors');
         $this->Authentication->allowUnauthenticated([
             'infoFor', 
-            'idMe', 
+            'idMe',            
             'chilliSessionWrite',
             'chilliSessionRead',
+            
+            'connectAndRedirect',
+            'connectAndRedirectInfo',
+            
             'chilliBrowserDetect',
             'mikrotikBrowserDetect',
             'ruckusBrowserDetect',
@@ -156,7 +161,57 @@ class DynamicDetailsController extends AppController{
         $this->viewBuilder()->setOption('serialize', true);
     }
     
+    //-------------------------------------
+    //__________ Connet and Redirect _____
+    //-------------------------------------
     
+    public function connectAndRedirect(){   
+        $redir_to = "/login/skel/launch.html";
+        $this->response = $this->response->withHeader('Location', $redir_to);
+        return $this->response;	    
+    }
+    
+    public function connectAndRedirectInfo(){
+    
+        $info = [];
+       
+        $detect = new MobileDetect();
+        $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+
+        $isAndroid = $detect->isAndroid();
+        $isWebView = false;
+
+        if ($isAndroid) {
+            // 1. Modern Android WebViews inject a "wv" token
+            // 2. Older Chromium-based WebViews include "Version/X.X" alongside Chrome
+            if (str_contains($userAgent, '; wv)') || (str_contains($userAgent, 'Version/') && str_contains($userAgent, 'Chrome/'))) {
+                $isWebView = true;
+            }
+        }
+
+        if ($isAndroid) {
+            if ($isWebView) {
+                // User is viewing from inside an app (e.g., Facebook, Instagram, or a custom app)
+            } else {
+                // User is using a standalone full browser (e.g., Chrome, Firefox, Opera)
+            }
+        }
+        
+        $info['is_android'] = $isAndroid;
+        $info['is_webview'] = $isWebView; 
+     
+        $this->set([
+            'data'          => $info,
+            'success'       => true
+        ]);
+        $this->viewBuilder()->setOption('serialize', true);    
+    
+    }
+    
+    //-------------------------------------
+    //______ END Connet and Redirect ______
+    //-------------------------------------
+      
     public function chilliBrowserDetect(){  
 		$redir_to = $this->_doBrowserDetectFor('coova');
 		print_r($redir_to);

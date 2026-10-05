@@ -7,7 +7,7 @@ $config['Cnr'] = [
     'bw_up'             => 2, //Bandwidth in mbps
     'bw_down'           => 2, //Bandwidth in mbps
     'start_with'        => 'CNR',
-    'password'          => 'connect_and_redirect'
+    'password'          => 'conn_and_redir' //Headsup MAX 15 Characters for password
 ];
 
 

@@ -22,6 +22,8 @@ use App\Model\Table\DynamicDetailSocialLoginsTable;
 use App\Model\Table\DynamicDetailCtcsTable;
 use App\Model\Table\PermanentUsersTable;
 
+use Cake\Log\Log;
+
 
 class DynamicDetailsController extends AppController{
   
@@ -165,8 +167,26 @@ class DynamicDetailsController extends AppController{
     //__________ Connet and Redirect _____
     //-------------------------------------
     
-    public function connectAndRedirect(){   
+    public function connectAndRedirect(){ 
+    
         $redir_to = "/login/skel/launch.html";
+        
+        $query_string  = $_SERVER['QUERY_STRING'];
+       
+        if($this->request->is('post')){
+		    $q_array = [];
+		    foreach(array_keys($req_d) as $key){
+		        $q_array[$key] = $req_d[$key];
+		        array_push($conditions["OR"],
+                    ["DynamicPairs.name" => $key, "DynamicPairs.value" =>  $req_d[$key]]
+                ); //OR query all the keys
+		     }     
+		     $query_string =  http_build_query($q_array);	     	     
+		}
+		if($query_string){		
+		    $redir_to = $redir_to."?".$query_string;
+	    }	
+                    
         $this->response = $this->response->withHeader('Location', $redir_to);
         return $this->response;	    
     }
@@ -178,8 +198,13 @@ class DynamicDetailsController extends AppController{
         $detect = new MobileDetect();
         $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
-        $isAndroid = $detect->isAndroid();
+        //$isAndroid = $detect->isAndroid(); //FIXME This did not work
+               
+        $isAndroid = stripos($userAgent, 'Android');
+        
         $isWebView = false;
+        
+        Log::info("User Agent - for WebView :" . $userAgent);
 
         if ($isAndroid) {
             // 1. Modern Android WebViews inject a "wv" token
@@ -188,17 +213,45 @@ class DynamicDetailsController extends AppController{
                 $isWebView = true;
             }
         }
-
-        if ($isAndroid) {
-            if ($isWebView) {
-                // User is viewing from inside an app (e.g., Facebook, Instagram, or a custom app)
-            } else {
-                // User is using a standalone full browser (e.g., Chrome, Firefox, Opera)
-            }
+        
+        if($isAndroid){
+            Log::info("Is Android checked");
         }
         
+        if($isWebView){
+            Log::info("Found an Android Webview");
+        }
+
+  
         $info['is_android'] = $isAndroid;
         $info['is_webview'] = $isWebView; 
+        
+        //We need to find the permanent_user to use to connect with
+        $nasid = $this->request->getQuery('nasid'); //nasid should be in the convention: ap_178_cp_375 or m_178_cp_375
+        $info['nasid']      = $nasid;
+
+        preg_match('/ap_(\d+)_cp_(\d+)/', $nasid, $matches);
+        $ap_id   = intval($matches[1]); // 178
+        $exit_id = intval($matches[2]); // 375
+
+        $info['ap_id']      = $ap_id;
+        $info['exit_id']    = $exit_id;
+        
+        $permanent_users    = $this->fetchTable('PermanentUsers');
+        $ap_profile_exits   = $this->fetchTable('ApProfileExits');
+        
+        $exit               = $ap_profile_exits->find()->where(['ApProfileExits.id' => $exit_id])->first();
+        $ap_profile_id      = $exit->ap_profile_id;
+        
+        Configure::load('ConnectAndRedirect');
+        //Convention is: 
+        $start_with         = Configure::read('Cnr.start_with');
+        $name               = $start_with.'_a_'.$ap_profile_id.'_'.$exit_id;
+        $password           = Configure::read('Cnr.password');
+        
+        $info['username']   = $name;
+        $info['password']   = $password;
+        $info['ap_profile_id'] =  $ap_profile_id;    
      
         $this->set([
             'data'          => $info,

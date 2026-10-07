@@ -23,10 +23,12 @@ class ConnectAndRedirectService {
     
         Configure::load('ConnectAndRedirect');     
         $special_uam_url = Configure::read('Cnr.special_uam_url');
+        $uam_secret      = Configure::read('Cnr.uam_secret');
         $portals = $this->fetchTable('ApProfileExitCaptivePortals'); 
          
         if($ent_cp->connect_and_redirect){
-            $ent_cp->uam_url = $special_uam_url;
+            $ent_cp->uam_url    = $special_uam_url;
+            $ent_cp->uam_secret = $uam_secret;
             $portals->save($ent_cp);
             $this->_completeApSetup($ent_cp,$cloud_id);
         }else{
@@ -46,7 +48,8 @@ class ConnectAndRedirectService {
         if($exit){
             $ap_profile_id  = $exit->ap_profile_id;
             $start_with     = Configure::read('Cnr.start_with');
-            $name           = $start_with.'_a_'.$ap_profile_id.'_'.$exit_id;
+            $name           = $start_with.'_a_'.$ap_profile_id.'_'.$exit_id;            
+            $realm_id       = intval($exit->realm_list);
             
             $profile = $profiles->find()
                 ->where([
@@ -70,7 +73,8 @@ class ConnectAndRedirectService {
                 }
                 $permanent_users->deleteAll(['PermanentUsers.username' => $name, 'PermanentUsers.cloud_id' => $cloud_id]);
                 $profiles->delete($profile);               
-            }        
+            }
+            $this->_doDynamicClients($cloud_id,$ap_profile_id,$exit_id,$realm_id);         
         }    
     }
     
@@ -120,7 +124,8 @@ class ConnectAndRedirectService {
                             ]
                         );
                         $user_groups->save($ne);
-                        $this->_doRadius($e_pc->name,$ent_cp->connect_and_redirect_url);                                   
+                        $this->_doRadius($e_pc->name,$ent_cp->connect_and_redirect_url);
+                                                          
                     }                             
                 }
                 //-- We have the realm_id, profile_id and name -- 
@@ -138,7 +143,8 @@ class ConnectAndRedirectService {
                     'cloud_id'      => $cloud_id                                                         
                 ];
                 $e_pu  = $permanent_users->newEntity($d_pu);
-                $permanent_users->save($e_pu);                                                                   
+                $permanent_users->save($e_pu);
+                $this->_doDynamicClients($cloud_id,$ap_profile_id,$exit_id,$realm_id);                                                                    
             }
         }
     }
@@ -234,6 +240,82 @@ class ConnectAndRedirectService {
         $e_ff = $radgroupreplies->newEntity($d_fall_through );
         $radgroupreplies->save($e_ff );       
     }
+      
+    private function _doDynamicClients($cloud_id,$ap_profile_id,$exit_id,$realm_id){
     
+        $aps            = $this->fetchTable('Aps');
+        $dynamicClients = $this->fetchTable('DynamicClients');
+        $userSettings   = $this->fetchTable('UserSettings');
+        $clientRealms   = $this->fetchTable('DynamicClientRealms');
+        
+        $ap_ids         = [];
+        $client_ap_ids  = [];
+        
+        //Timezone default = 23;
+        $tz = 23;
+        
+        $timezone = $userSettings->find()
+            ->where([
+                'UserSettings.user_id'  => -1,
+                'UserSettings.name'     => 'timezone'
+            ])
+            ->first();
+        
+        if($timezone){
+            $tz = $timezone->value;
+        }      
+        
+        $ap_list = $aps->find()->where(['Aps.ap_profile_id' => $ap_profile_id])->all();
+        foreach($ap_list as $ap){
+            $ap_ids[] = $ap->id;      
+        }
+        
+        //APdesk Captive portal is added with the following convention on the nasidentifier 'ap_{ap_id}_cp_{ap_profile_exit_id}'
+        $existingClients = $dynamicClients->find()
+            ->where([
+                'DynamicClients.nasidentifier REGEXP' => "^ap_[0-9]+_cp_{$exit_id}$",
+                'DynamicClients.cloud_id'             => $cloud_id
+            ])
+            ->all();
+        foreach($existingClients as $client){       
+            
+            Log::info("Existing Client" . $client->nasidentifier);
+            $ap_id = null;
+            if (preg_match('/^ap_(\d+)_cp_(\d+)$/', $client->nasidentifier ?? '', $matches)) {
+                $ap_id = (int)$matches[1];  
+                $client_ap_ids[] = $ap_id;
+                //---Clean UP---         
+                if (!in_array($ap_id, $ap_ids)){
+                    Log::info("We need to remove DynamicClient" . $client->id);
+                }
+            } else {
+                Log::warning("nasidentifier did not match expected format: " . $client->nasidentifier);
+            }                 
+        }
+        
+        foreach($ap_ids as $ap_id){
+            if(!in_array($ap_id, $client_ap_ids)){           
+                $nasid  = 'ap_'.$ap_id.'_cp_'.$exit_id;
+                $client = 'APdesk_'.$ap_profile_id.'_'.$nasid;
+                Log::info("ADD Dynamic Client " . $client);
+                $client_data = [
+                    'name'          => $client, 
+                    'nasidentifier' => $nasid,
+                    'type'          => 'CoovaMeshdesk',
+                    'timezone'      => $tz,
+                    'cloud_id'      => $cloud_id                   
+                ];
+                $e_dc = $dynamicClients->newEntity($client_data);
+                $dynamicClients->save($e_dc);
+                 
+                //---Add a Realm mapping---
+                $dcr['dynamic_client_id']   = $e_dc->id;
+                $dcr['realm_id']            = $realm_id;
+                $realmEntity                = $clientRealms->newEntity($dcr);
+                $clientRealms->save($realmEntity);              
+            }
+        }           
+    }
+       
 }
 

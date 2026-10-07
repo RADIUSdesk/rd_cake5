@@ -85,9 +85,11 @@ RADIUSdesk.accounting {
 }
 
 RADIUSdesk.post-auth {
-	RADIUSdesk_last_accept
-	RADIUSdesk_post_auth
+    RADIUSdesk_last_accept
+    RADIUSdesk_post_auth
     RADIUSdesk_auto_devices_check
+    #--OCT 2026-- New enhancement for APdesk
+    RADIUSdesk_admin_state
 }
 
 #____ RADIUSdesk policies __________
@@ -1380,6 +1382,40 @@ RADIUSdesk_auto_devices_check {
         if((&control:Rd-Auto-Mac)&&(&control:Rd-Auto-Mac == 1)){
             "%{sql:INSERT IGNORE INTO auto_devices SET auto_devices.username='%{request:User-Name}', auto_devices.mac='%{request:Calling-Station-Id}'}"
         }
+    }
+}
+
+RADIUSdesk_admin_state {
+    # 1. Verify required request attributes exist
+    if ((&request:ChilliSpot-Version) && (&request:NAS-Identifier)) {
+        
+        # 2. Verify redirect URL exists and matches the precise 'ap_X_cp_Y' pattern
+        if ((&reply:WISPr-Redirection-URL) && (&request:NAS-Identifier =~ /ap_([0-9]+)_cp_([0-9]+)/i)) {
+            
+            # 3. Pull the SQL name using the first capture group %{1} (the database ID)
+            update control {
+                &control:Tmp-String-4 := "%{1}"
+                &control:Tmp-String-3 := "%{sql:SELECT name FROM aps WHERE id='%{1}' LIMIT 1}"
+            }
+            
+            # 4. If the SQL query returned a valid string (is not empty)
+            if (&control:Tmp-String-3 != "") {
+                
+                # Check if the URL already contains a '?' character
+                if (&reply:WISPr-Redirection-URL =~ /\?/) {
+                    # URL already has query parameters, append with '&'
+                    update reply {
+                        &reply:WISPr-Redirection-URL := "%{reply:WISPr-Redirection-URL}&ap_name=%{control:Tmp-String-3}&ap_id=%{control:Tmp-String-4}"
+                    }
+                }
+                else {
+                    # URL has no query parameters yet, append with '?'
+                    update reply {
+                        &reply:WISPr-Redirection-URL := "%{reply:WISPr-Redirection-URL}?ap_name=%{control:Tmp-String-3}&ap_id=%{control:Tmp-String-4}"
+                    }
+                }
+            }       
+        }       
     }
 }
 

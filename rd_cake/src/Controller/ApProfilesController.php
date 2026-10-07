@@ -38,6 +38,8 @@ use App\Model\Table\TimezonesTable;
 use App\Model\Table\ApWifiSettingsTable;
 use App\Model\Table\UserSettingsTable;
 use App\Model\Table\ApProfileExitsTable;
+use App\Model\Table\ApProfileExitApProfileEntriesTable;
+use App\Model\Table\ApProfileExitCaptivePortalsTable;
 
 class ApProfilesController extends AppController {
 
@@ -65,6 +67,8 @@ class ApProfilesController extends AppController {
     protected ApWifiSettingsTable $ApWifiSettings;
     protected UserSettingsTable $UserSettings;
     protected ApProfileExitsTable $ApProfileExits;
+    protected ApProfileExitApProfileEntriesTable $ApProfileExitApProfileEntries;
+    protected ApProfileExitCaptivePortalsTable $ApProfileExitCaptivePortals;
     
     protected ConnectAndRedirectService $connectAndRedirectService;
 
@@ -91,6 +95,9 @@ class ApProfilesController extends AppController {
         $this->Hardwares               = $this->fetchTable('Hardwares');
         $this->Timezones               = $this->fetchTable('Timezones');
         $this->ApWifiSettings          = $this->fetchTable('ApWifiSettings');
+        $this->ApWifiSettings          = $this->fetchTable('ApWifiSettings');
+        $this->ApProfileExitApProfileEntries = $this->fetchTable('ApProfileExitApProfileEntries');
+        $this->ApProfileExitCaptivePortals = $this->fetchTable('ApProfileExitCaptivePortals');
 
         $this->loadComponent('Aa');
         $this->loadComponent('GridButtonsFlat'); 
@@ -1692,9 +1699,7 @@ class ApProfilesController extends AppController {
         ]);
         $this->viewBuilder()->setOption('serialize', true);
     }
-
    
-    
     public function apProfileEntryPoints(){
 
         $this->ApProfileExits  = $this->fetchTable('ApProfileExits');

@@ -303,7 +303,8 @@ class ConnectAndRedirectService {
                     'nasidentifier' => $nasid,
                     'type'          => 'CoovaMeshdesk',
                     'timezone'      => $tz,
-                    'cloud_id'      => $cloud_id                   
+                    'cloud_id'      => $cloud_id,
+                    'session_auto_close' => true                   
                 ];
                 $e_dc = $dynamicClients->newEntity($client_data);
                 $dynamicClients->save($e_dc);

@@ -255,6 +255,12 @@ $config['Admin']['i18n'][0]     = [
     'active'    => true
 ];
 
+
+$config['temp_register'] = [
+    'active'    => true,
+    'cloud_id'  => 64
+];
+
 return $config;
 
 ?>

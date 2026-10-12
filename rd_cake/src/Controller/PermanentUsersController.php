@@ -587,6 +587,43 @@ class PermanentUsersController extends AppController{
              }       
         }
         
+        //---- OCT 2026 ----
+        //---- If we 'park' certain devices in a designated cloud ---
+        //---- If this is enabled we need to get the current sessions to disconnect them --
+        if(isset($req_d['mac_address']) && ($req_d['mac_address'] !== '')){                  
+            $isActive   = Configure::read('temp_register.active');
+            $token      = $req_d['token'];
+            if($isActive){
+                $cloud_id = Configure::read('temp_register.cloud_id');
+                $ent_temp = $this->PermanentUsers->find()
+                    ->where([
+                        'PermanentUsers.mac_address'    => $req_d['mac_address'],
+                        'PermanentUsers.cloud_id'       => $cloud_id
+                        ])
+                    ->first();
+                if($ent_temp){               
+                    $username = $ent_temp->username;
+                    //We get a list of active session to store:                                                 
+                    $clonedRadaccts = [];
+                    
+                    $eRadaccts 	= $this->Radaccts->find()->where(['Radaccts.username' => $username,'Radaccts.acctstoptime IS NULL'])->all();                    
+                    foreach($eRadaccts as $radacct){
+	                    $clonedEntities[] = clone $radacct; 
+                    }
+                    
+                    //Deleting should also remove the sessions from the Ra
+                    $this->PermanentUsers->delete($ent_temp);
+                                        
+                    foreach($clonedRadaccts as $radacct){
+                        $data = $this->Kicker->kick($radacct,$token);   
+                    }
+                   
+                }
+            }
+        }
+        //--- END OCT 2026 ---
+        
+                
         //The rest of the attributes should be same as the form..
         $entity = $this->{$this->main_model}->newEntity($req_d);
          

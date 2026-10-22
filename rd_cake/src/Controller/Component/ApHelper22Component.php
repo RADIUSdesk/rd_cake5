@@ -50,6 +50,7 @@ class ApHelper22Component extends Component {
     protected $files            = [];
     
     protected $ppsk_flag		= false;
+    protected $m2u_profile	    = false; //2026-10-17: true when this AP profile carries a PPSK entry (see _addMulticastToUnicast)
     protected $private_psks     = [];
       
     protected $stp_dflt			= 0;
@@ -1317,6 +1318,16 @@ class ApHelper22Component extends Component {
                
         $start_number = 0;
         
+        // 2026-10-17 : multicast-to-unicast scope. A profile that carries a PPSK entry is a PPSK site and
+        // every BSS it emits gets multicast_to_unicast_all (see _addMulticastToUnicast for the per-entry rules).
+        $this->m2u_profile = false;
+        foreach($ap_profile->ap_profile->ap_profile_entries as $m2u_e){
+            if(($m2u_e->encryption == 'ppsk')||($m2u_e->encryption == 'ppsk_no_radius')){
+                $this->m2u_profile = true;
+                break;
+            }
+        }
+                
 		//____ ENTRY POINTS ____
         //Check if we need to add this wireless VAP
         foreach($ap_profile->ap_profile->ap_profile_entries as $ap_profile_e){
@@ -1498,6 +1509,8 @@ class ApHelper22Component extends Component {
 								    $base_array = array_merge($base_array,$options);
 								    $lists	    = $this->Passpoint->getLists($ap_profile_e->passpoint_profile_id);                                  
                                 }
+                                
+                                $base_array = $this->_addMulticastToUnicast($base_array,$ap_profile_e); //2026-10-17
                                 
                                 //Check if we need to mix in the RADIUS items
                                 $base_array = $this->_includeRadius($base_array,$ap_profile_e,$y);
@@ -1704,6 +1717,8 @@ class ApHelper22Component extends Component {
 					    $base_array = array_merge($base_array,$options);
 					    $lists	    = $this->Passpoint->getLists($ap_profile_e->passpoint_profile_id);                                  
                     }
+                    
+                    $base_array = $this->_addMulticastToUnicast($base_array,$ap_profile_e); //2026-10-17
                     
                     //Check if we need to mix in the RADIUS items                    
                     $base_array = $this->_includeRadius($base_array,$ap_profile_e,$y);
@@ -2060,6 +2075,27 @@ class ApHelper22Component extends Component {
         }
         return $base_array;	
 	}
+	
+	//2026-10-17 hostapd multicast_to_unicast=1 (OpenWrt wifi-iface option multicast_to_unicast_all)
+ 	//rewrites every group-addressed frame (ARP, DHCP offers/ACKs, mDNS, SSDP, IPv6 ND) into one unicast copy per station,
+ 	//encrypted with the pairwise key, so delivery no longer depends on the group-key path. mt76 APs lose group frames in
+ 	//two known ways: one GTK slot per BSS with dynamic VLANs (560 W 43rd 30K, 2026-10-05) and a group-frame stall with a
+ 	//healthy unicast path (589 Fulton 1-LB-1, 2026-10-17). Scope: PPSK sites (whole profile), shared SSIDs (apply_to_all),
+ 	//dynamic-VLAN BSSes. Per-unit SSIDs at non-PPSK sites are untouched. Cost: group frames are replicated per station
+ 	//at unicast rates (fine for the client counts on these BSSes; not for multicast video, which we do not carry).
+ 	private function _addMulticastToUnicast($base_array,$apProfileEntry){
+ 	    if(
+	        ($this->m2u_profile)||
+ 	        ($apProfileEntry->apply_to_all == 1)||
+ 	        ($apProfileEntry->encryption == 'ppsk')||
+ 	        ($apProfileEntry->encryption == 'ppsk_no_radius')||
+ 	        ($apProfileEntry->encryption == 'wpa2')
+ 	    ){
+ 	        $base_array['multicast_to_unicast_all'] = '1';
+ 	    }
+ 	    return $base_array;
+ 	}
+
 	
 	private function _addPpskSettings($base_array){
 	    $base_array['encryption']	= 'psk2';

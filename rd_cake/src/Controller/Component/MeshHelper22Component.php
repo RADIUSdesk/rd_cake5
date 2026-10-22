@@ -34,6 +34,7 @@ class MeshHelper22Component extends Component {
     protected $week_days 	    = [ 1 => 'mo',2 => 'tu',3 => 'we',4 => 'th',5 => 'fr',6 => 'sa',7 => 'su'];
     
     protected $ppsk_flag		= false;
+    protected $m2u_profile	    = false; //2026-10-17: true when this AP profile carries a PPSK entry (see _addMulticastToUnicast)
     protected $private_psks     = [];
     protected $ppsk_unset       = [ 'key','nasid','auth_server','auth_secret','acct_server','acct_secret','acct_interval', 'nasid', 'radius_auth_req_attr','radius_acct_req_attr'];
     
@@ -1561,7 +1562,18 @@ class MeshHelper22Component extends Component {
         }
         
         $start_number = 2;
+        
+        // 2026-10-17 : multicast-to-unicast scope. A profile that carries a PPSK entry is a PPSK site and
+        // every BSS it emits gets multicast_to_unicast_all (see _addMulticastToUnicast for the per-entry rules).
+        $this->m2u_profile = false;
+        foreach($ent_mesh->mesh_entries as $m2u_e){
+            if(($m2u_e->encryption == 'ppsk')||($m2u_e->encryption == 'ppsk_no_radius')){
+                $this->m2u_profile = true;
+                break;
+            }
+        }
 
+        //____ ENTRY POINTS ____
         //Check if we need to add this wireless VAP
         foreach($ent_mesh->mesh_entries as $me){ 
             $entry_id   = $me->id;
@@ -1729,6 +1741,8 @@ class MeshHelper22Component extends Component {
                                     }
                                     
                                     $lists = [];
+                                    
+                                    $base_array = $this->_addMulticastToUnicast($base_array,$me); // 2026-10-17
                                     
                                     if($me->hotspot2_enable){
                                     	Configure::load('Hotspot2');
@@ -1916,6 +1930,8 @@ class MeshHelper22Component extends Component {
                                                     }
                                                     
                                                   	$lists = [];
+                                                  	
+                                                  	$base_array = $this->_addMulticastToUnicast($base_array,$me); // 2026-10-17
                                     
 								                    if($me->hotspot2_enable){
 								                    	Configure::load('Hotspot2');
@@ -2279,5 +2295,25 @@ class MeshHelper22Component extends Component {
 	    }
 	    return implode("\n",$lines);	
 	}
+	
+	//2026-10-17 hostapd multicast_to_unicast=1 (OpenWrt wifi-iface option multicast_to_unicast_all)
+ 	//rewrites every group-addressed frame (ARP, DHCP offers/ACKs, mDNS, SSDP, IPv6 ND) into one unicast copy per station,
+ 	//encrypted with the pairwise key, so delivery no longer depends on the group-key path. mt76 APs lose group frames in
+ 	//two known ways: one GTK slot per BSS with dynamic VLANs (560 W 43rd 30K, 2026-10-05) and a group-frame stall with a
+ 	//healthy unicast path (589 Fulton 1-LB-1, 2026-10-17). Scope: PPSK sites (whole profile), shared SSIDs (apply_to_all),
+ 	//dynamic-VLAN BSSes. Per-unit SSIDs at non-PPSK sites are untouched. Cost: group frames are replicated per station
+ 	//at unicast rates (fine for the client counts on these BSSes; not for multicast video, which we do not carry).
+ 	private function _addMulticastToUnicast($base_array,$me){
+ 	    if(
+	        ($this->m2u_profile)||
+ 	        ($me->apply_to_all == 1)||
+ 	        ($me->encryption == 'ppsk')||
+ 	        ($me->encryption == 'ppsk_no_radius')||
+ 	        ($me->encryption == 'wpa2')
+ 	    ){
+ 	        $base_array['multicast_to_unicast_all'] = '1';
+ 	    }
+ 	    return $base_array;
+ 	}
        
 }

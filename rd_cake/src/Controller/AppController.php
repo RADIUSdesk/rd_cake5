@@ -71,9 +71,16 @@ class AppController extends Controller
 
         $user = $this->Aa->user_for_token_with_cloud($this);
         if(!$user){   //If not a valid user
+            throw new \Cake\Http\Exception\ForbiddenException();
             return;
         }
         
+        //--If the user does not have a role on the selected cloud_id simply return
+        if(!$user['role']){
+            throw new \Cake\Http\Exception\ForbiddenException();
+            return;
+        }
+       
         $rbaAllowed = $this->Aa->checkRbaAccess($user);
         
         if (!$rbaAllowed) {

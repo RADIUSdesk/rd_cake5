@@ -1363,27 +1363,43 @@ class PermanentUsersController extends AppController{
         $value      = false;
         $activate   = false;
         $expire     = false;
-
 		$req_q      = $this->request->getQuery();
-
+			   	
         if(isset($req_q['user_id'])){
-
-            $q_r = $this->{$this->main_model}->get($req_q['user_id']);
+        
+            $found_realm  = false;       
+            $where  = [
+		        'id'        => $req_q['user_id'],
+                'cloud_id'  => $req_q['cloud_id'],
+		    ];
+		    
+		    //-- Do Realm check --
+		    $apRealmList  = $this->Aa->realmCheck(false);
+          	if($apRealmList){
+          	    $found_realm  = true;
+          	    $realm_list = $apRealmList;
+          	}
+          	if($found_realm){
+          	    array_push($where, ["PermanentUsers.realm_id IN" => $realm_list]);
+          	}
+        
+            $q_r = $this->PermanentUsers->find()
+                ->where($where)->first();           
             if($q_r){
-               if($q_r->from_date ){
-                 $activate = $q_r->from_date->format("m/d/Y");   
-               }
-               if($q_r->to_date ){
-                 $expire = $q_r->to_date->format("m/d/Y");   
-               }
-            }
-            $pw = $this->{$this->main_model}->getCleartextPassword($q_r->username);
+                if($q_r->from_date ){
+                    $activate = $q_r->from_date->format("m/d/Y");   
+                }
+                if($q_r->to_date ){
+                    $expire = $q_r->to_date->format("m/d/Y");   
+                }
+               
+                $pw = $this->{$this->main_model}->getCleartextPassword($q_r->username);
 
-            if($pw){
-                $value = $pw;
-            }
-
-            $success = true;
+                if($pw){
+                    $value = $pw;
+                }
+                $success = true;
+            }         
         }
         $this->set([
             'success'   => $success,
@@ -1392,7 +1408,6 @@ class PermanentUsersController extends AppController{
             'expire'    => $expire
         ]);
         $this->viewBuilder()->setOption('serialize', true);
-
     }
 
     public function changePassword(){

@@ -19,7 +19,7 @@ use App\Controller\AppController;
 use Cake\Core\Configure;
 use Cake\Core\Configure\Engine\PhpConfig;
 
-use Cake\Auth\DefaultPasswordHasher;
+use Authentication\PasswordHasher\DefaultPasswordHasher;
 use Cake\Http\Exception\UnauthorizedException;
 use Cake\Utility\Text;
 use App\Model\Table\ClientsTable;

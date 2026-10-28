@@ -15,7 +15,7 @@
   
 namespace App\Controller;
 
-use Cake\Auth\DefaultPasswordHasher;
+use Authentication\PasswordHasher\DefaultPasswordHasher;
 use Cake\Http\Exception\UnauthorizedException;
 use Cake\Utility\Text;
 

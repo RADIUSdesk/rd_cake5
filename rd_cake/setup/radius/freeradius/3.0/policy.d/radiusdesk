@@ -141,8 +141,8 @@ RADIUSdesk_pu_username_for_ip {
                           AND attribute = 'Cleartext-Password' \
                         LIMIT 1}"
                 }
-
-                if ("%{control:Tmp-String-1}" != "") {
+	
+                if ("&control:Tmp-String-1" != "") {
                     update request {
                         User-Password := "%{control:Tmp-String-1}"
                     }
@@ -357,242 +357,184 @@ RADIUSdesk_ppsk_defaults {
 }
 
 RADIUSdesk_acct_dynamic_client_check {
+    # Initialize all control flags in one clean block
     update control {
-        #Set it to zero which means we don't know this client
         Rd-Dynamic-Client := 0
-        #Set Rd-Unknown-Added and not added yet
-        Rd-Unknown-Added := 0
-        #Set client updated to 0
+        Rd-Unknown-Added  := 0
         Rd-Client-Updated := 0
+        Rd-Client-Active  := 2
     }
 
-    if(&request:NAS-Identifier){
-
-        #Check wether the client is there and active
+    # --- STEP 1: RESOLVE CLIENT STATUS VIA NAS-IDENTIFIER OR CALLED-STATION-ID ---
+    if (&request:NAS-Identifier) {
         update control {
-            #If we do not find an entry we return 2
-            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT dynamic_clients.active FROM dynamic_clients WHERE nasidentifier='%{request:NAS-Identifier}'),2)}"
+            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT active FROM dynamic_clients WHERE nasidentifier='%{request:NAS-Identifier}'), 2)}"
         }
+    }
 
-        if((&control:Rd-Client-Active == 0)||(&control:Rd-Client-Active == 1)){
-            #Update the 'most recent' ip and timestamp
+    # Fallback to Called-Station-Id only if not found via NAS-Identifier
+    if (&control:Rd-Client-Active == 2 && &request:Called-Station-Id) {
+        update control {
+            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT active FROM dynamic_clients WHERE calledstationid='%{request:Called-Station-Id}'), 2)}"
+        }
+    }
+
+    # --- STEP 2: HANDLE KNOWN CLIENTS (ACTIVE OR INACTIVE) ---
+    if (&control:Rd-Client-Active == 0 || &control:Rd-Client-Active == 1) {
+        
+        # Update contact details using matching identifier
+        if (&request:NAS-Identifier) {
             "%{sql:UPDATE dynamic_clients SET \
                 last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                last_contact=now() \
-                WHERE nasidentifier='%{request:NAS-Identifier}' \
-            }"
-
-            update control {
-                Rd-Client-Updated := 1
-            }
-
-            if(&control:Rd-Client-Active == 1){
-                update control {
-                    Rd-Dynamic-Client := 1
-                }
-            }
+                last_contact=NOW() \
+                WHERE nasidentifier='%{request:NAS-Identifier}'}"
         }
-        
-        #We did not find it; record it in unknown
-        if(&control:Rd-Client-Active == 2){
-            #Jun 2024 - We incorporate a convenient Perl script to automatically add dynamic clients (The script has a flag to enable it)
-            pl_auto_add_dynamic_client
-            if(updated){
-                update control {
-                    Rd-Dynamic-Client := 1
-                    Rd-Client-Updated := 1
-                    Rd-Client-Active  := 1
-                }
-            }else{     
-                "%{sql:INSERT INTO unknown_dynamic_clients SET nasidentifier='%{request:NAS-Identifier}', \
-                    last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                    last_contact=now(), \
-                    calledstationid='%{request:Called-Station-Id}' \
-                    on duplicate key update last_contact=now(),last_contact_ip='%{request:Packet-Src-IP-Address}' \
-                }"
-                update control {
-                    Rd-Unknown-Added := 1
-                }
-            }
-        }
-        
-    }
-
-    #Called-Station-Id - We only enter here if it was not set in the first place
-    if((&control:Rd-Client-Active == 2)&&(&request:Called-Station-Id)){
-
-        #Check whether the client is there and active
-        update control {
-            #If we do not find an entry we return 2
-            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT dynamic_clients.active FROM dynamic_clients WHERE calledstationid='%{request:Called-Station-Id}'),2)}"
-        }
-
-        if((&control:Rd-Client-Active == 0)||(&control:Rd-Client-Active == 1)){
-
-            #Only if it has not been updated
-            if(&control:Rd-Client-Updated == 0){
-                #Update the 'most recent' ip and timestamp
-                "%{sql:UPDATE dynamic_clients SET \
-                    last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                    last_contact=now() \
-                    WHERE calledstationid='%{request:Called-Station-Id}' \
-                }"
-            }
-
-            if(&control:Rd-Client-Active == 1){
-                update control {
-                    Rd-Dynamic-Client := 1
-                }
-            }
-        }
-
-        if(&control:Rd-Client-Active == 2){
-            #Update the unknown_dynamic_clients table only if it was not updated before
-            if(&control:Rd-Unknown-Added == 0){
-                "%{sql:INSERT INTO unknown_dynamic_clients SET nasidentifier='%{request:NAS-Identifier}', \
-                    last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                    last_contact=now(), \
-                    calledstationid='%{request:Called-Station-Id}' \
-                    on duplicate key update last_contact=now(),last_contact_ip='%{request:Packet-Src-IP-Address}' \
-                }"
-                update control {
-                    Rd-Unknown-Added := 1
-                }
-            }
-        }
-    }
-    ok
-}
-
-
-RADIUSdesk_find_dynamic_client {
-
-    update control {
-        #Set it to zero which means we don't know this client
-        Rd-Dynamic-Client := 0
-        #Set Rd-Unknown-Added and not added yet
-        Rd-Unknown-Added := 0
-        #Set client updated to 0
-        Rd-Client-Updated := 0
-    }
-
-    #NAS-Identifier
-    if(&request:NAS-Identifier){
-
-        #Check wether the client is there and active
-        update control {
-            #If we do not find an entry we return 2
-            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT dynamic_clients.active FROM dynamic_clients WHERE nasidentifier='%{request:NAS-Identifier}'),2)}"
-        }
-
-        if((&control:Rd-Client-Active == 0)||(&control:Rd-Client-Active == 1)){
-
-            #Update the 'most recent' ip and timestamp
+        elsif (&request:Called-Station-Id) {
             "%{sql:UPDATE dynamic_clients SET \
                 last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                last_contact=now() \
-                WHERE nasidentifier='%{request:NAS-Identifier}' \
-            }"
-
-            update control {
-                Rd-Client-Updated := 1
-            }
-
-            if(&control:Rd-Client-Active == 1){
-                update control {
-                    Rd-Dynamic-Client := 1
-                }
-            }
-            else {
-                update reply {                
-                    Reply-Message := "NAS-Identifier %{request:NAS-Identifier} is disabled"
-                }
-                reject
-            }
+                last_contact=NOW() \
+                WHERE calledstationid='%{request:Called-Station-Id}'}"
         }
 
-        #We did not find it; record it in unknown
-        if(&control:Rd-Client-Active == 2){
-            #Jun 2024 - We incorporate a convenient Perl script to automatically add dynamic clients (The script has a flag to enable it)
-            pl_auto_add_dynamic_client
-            if(updated){
-                update control {
-                    Rd-Dynamic-Client := 1
-                    Rd-Client-Updated := 1
-                    Rd-Client-Active  := 1
-                }
-            }else{     
-                "%{sql:INSERT INTO unknown_dynamic_clients SET nasidentifier='%{request:NAS-Identifier}', \
-                    last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                    last_contact=now(), \
-                    calledstationid='%{request:Called-Station-Id}' \
-                    on duplicate key update last_contact=now(),last_contact_ip='%{request:Packet-Src-IP-Address}' \
-                }"
-                update control {
-                    Rd-Unknown-Added := 1
-                }
+        update control {
+            Rd-Client-Updated := 1
+        }
+
+        if (&control:Rd-Client-Active == 1) {
+            update control {
+                Rd-Dynamic-Client := 1
             }
         }
     }
     
-    #Called-Station-Id - We only enter here if it was not set in the first place
-    if((&control:Rd-Client-Active == 2)&&(&request:Called-Station-Id)){
-
-         #Check whether the client is there and active
-        update control {
-            #If we do not find an entry we return 2
-            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT dynamic_clients.active FROM dynamic_clients WHERE calledstationid='%{request:Called-Station-Id}'),2)}"
-        }
-
-        if((&control:Rd-Client-Active == 0)||(&control:Rd-Client-Active == 1)){
-
-            #Only if it has not been updated
-            if(&control:Rd-Client-Updated == 0){
-                #Update the 'most recent' ip and timestamp
-                "%{sql:UPDATE dynamic_clients SET \
-                    last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                    last_contact=now() \
-                    WHERE calledstationid='%{request:Called-Station-Id}' \
-                }"
-            }
-
-            if(&control:Rd-Client-Active == 1){
-                update control {
-                    Rd-Dynamic-Client := 1
-                }
-            }
-            else {
-                update reply {                
-                    Reply-Message := "Called-Station-Id %{request:Called-Station-Id} is disabled"
-                }
-                reject
+    # --- STEP 3: HANDLE UNKNOWN CLIENTS ---
+    elsif (&control:Rd-Client-Active == 2) {
+        
+        # Try Perl automatic registration script
+        pl_auto_add_dynamic_client
+        
+        if (updated) {
+            update control {
+                Rd-Dynamic-Client := 1
+                Rd-Client-Updated := 1
+                Rd-Client-Active  := 1
             }
         }
-
-        if(&control:Rd-Client-Active == 2){
-            #Update the unknown_dynamic_clients table only if it was not updated before
-            if(&control:Rd-Unknown-Added == 0){
-                "%{sql:INSERT INTO unknown_dynamic_clients SET nasidentifier='%{request:NAS-Identifier}', \
-                    last_contact_ip='%{request:Packet-Src-IP-Address}', \
-                    last_contact=now(), \
-                    calledstationid='%{request:Called-Station-Id}' \
-                    on duplicate key update last_contact=now(),last_contact_ip='%{request:Packet-Src-IP-Address}' \
-                }"
-            }
+        else {     
+            # Fallback to recording the unknown device
+            "%{sql:INSERT INTO unknown_dynamic_clients \
+                (nasidentifier, calledstationid, last_contact_ip, last_contact) \
+                VALUES ('%{request:NAS-Identifier}', '%{request:Called-Station-Id}', '%{request:Packet-Src-IP-Address}', NOW()) \
+                ON DUPLICATE KEY UPDATE \
+                last_contact=NOW(), last_contact_ip='%{request:Packet-Src-IP-Address}'}"
+                
             update control {
                 Rd-Unknown-Added := 1
             }
         }
     }
 
-    #If it was not identified nor disabled we reject it
-    if(&control:Rd-Dynamic-Client == 0){
+    ok
+}
+
+
+RADIUSdesk_find_dynamic_client {
+
+    # Initialize control flags in a single execution block
+    update control {
+        Rd-Dynamic-Client := 0
+        Rd-Unknown-Added  := 0
+        Rd-Client-Updated := 0
+        Rd-Client-Active  := 2
+    }
+
+    # --- STEP 1: RESOLVE CLIENT STATUS VIA NAS-IDENTIFIER OR CALLED-STATION-ID ---
+    if (&request:NAS-Identifier) {
+        update control {
+            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT active FROM dynamic_clients WHERE nasidentifier='%{request:NAS-Identifier}'), 2)}"
+        }
+    }
+
+    # Fallback to Called-Station-Id only if NAS-Identifier wasn't found or wasn't provided
+    if (&control:Rd-Client-Active == 2 && &request:Called-Station-Id) {
+        update control {
+            Rd-Client-Active := "%{sql:SELECT IFNULL((SELECT active FROM dynamic_clients WHERE calledstationid='%{request:Called-Station-Id}'), 2)}"
+        }
+    }
+
+    # --- STEP 2: HANDLE KNOWN CLIENTS (ACTIVE OR INACTIVE) ---
+    if (&control:Rd-Client-Active == 0 || &control:Rd-Client-Active == 1) {
+
+        # Update contact details using whichever matching identifier resolved the client
+        if (&request:NAS-Identifier) {
+            "%{sql:UPDATE dynamic_clients SET \
+                last_contact_ip='%{request:Packet-Src-IP-Address}', \
+                last_contact=NOW() \
+                WHERE nasidentifier='%{request:NAS-Identifier}'}"
+        }
+        elsif (&request:Called-Station-Id) {
+            "%{sql:UPDATE dynamic_clients SET \
+                last_contact_ip='%{request:Packet-Src-IP-Address}', \
+                last_contact=NOW() \
+                WHERE calledstationid='%{request:Called-Station-Id}'}"
+        }
+
+        update control {
+            Rd-Client-Updated := 1
+        }
+
+        # Handle Active State (Permit) vs Inactive State (Explicit Reject)
+        if (&control:Rd-Client-Active == 1) {
+            update control {
+                Rd-Dynamic-Client := 1
+            }
+        }
+        else {
+            # Use a dynamic message based on which identifier matched
+            update reply {                
+                Reply-Message := "RADIUS client (%{request:NAS-Identifier}:-%{request:Called-Station-Id}) is disabled"
+            }
+            reject
+        }
+    }
+
+    # --- STEP 3: HANDLE UNKNOWN CLIENTS ---
+    elsif (&control:Rd-Client-Active == 2) {
+        
+        # Try Perl automatic registration script
+        pl_auto_add_dynamic_client
+        
+        if (updated) {
+            update control {
+                Rd-Dynamic-Client := 1
+                Rd-Client-Updated := 1
+                Rd-Client-Active  := 1
+            }
+        }
+        else {     
+            # Fallback to recording the unknown device (safely combined into one clean place)
+            "%{sql:INSERT INTO unknown_dynamic_clients \
+                (nasidentifier, calledstationid, last_contact_ip, last_contact) \
+                VALUES ('%{request:NAS-Identifier}', '%{request:Called-Station-Id}', '%{request:Packet-Src-IP-Address}', NOW()) \
+                ON DUPLICATE KEY UPDATE \
+                last_contact=NOW(), last_contact_ip='%{request:Packet-Src-IP-Address}'}"
+                
+            update control {
+                Rd-Unknown-Added := 1
+            }
+        }
+    }
+
+    # --- STEP 4: FINAL ENFORCEMENT CHECK ---
+    # Catch-all reject if the client was not authenticated/auto-added above
+    if (&control:Rd-Dynamic-Client == 0) {
         update reply {
             Reply-Message := "RADIUS client not allowed. Contact server administrator"
         }
         reject
     }
 }
+
 
     RADIUSdesk_rewrite_calling_station_id {
         if(&request:Calling-Station-Id){
@@ -967,6 +909,13 @@ RADIUSdesk_user_check {
                     # allow auth to proceed
                 }
                 case suspended {
+                
+                    ##update reply {                
+                    ##    Tunnel-Type := "VLAN"
+                    ##    Tunnel-Medium-Type := "IEEE-802"
+                    ##    Tunnel-Private-Group-ID := "104"
+                    ##}
+                    ##accept
                     update reply {
                         Reply-Message := "User %{request:User-Name} account suspended"
                     }
@@ -1400,7 +1349,7 @@ RADIUSdesk_admin_state {
             
             # 4. If the SQL query returned a valid string (is not empty)
             if (&control:Tmp-String-3 != "") {
-                
+                            
                 # Check if the URL already contains a '?' character
                 if (&reply:WISPr-Redirection-URL =~ /\?/) {
                     # URL already has query parameters, append with '&'
@@ -1414,6 +1363,18 @@ RADIUSdesk_admin_state {
                         &reply:WISPr-Redirection-URL := "%{reply:WISPr-Redirection-URL}?ap_name=%{control:Tmp-String-3}&ap_id=%{control:Tmp-String-4}"
                     }
                 }
+                
+                # 5. Inject the username if present
+                # It it is a PPSK user we should be able to get their username from the radacct table
+                # We get that by finding the MOST RECENT radacct entry NOT the Click and Redirect user (Captive Portal comes AFTER PPSK)
+                update control {
+                    &control:Tmp-String-5 =  "%{sql:SELECT username  FROM radacct WHERE callingstationid='%{request:Calling-Station-Id}' AND username <> '%{request:User-Name}' ORDER BY acctstarttime DESC LIMIT 1}"
+                }              
+                if (&control:Tmp-String-5 != "") {
+                    update reply {
+                        &reply:WISPr-Redirection-URL := "%{reply:WISPr-Redirection-URL}&username=%{control:Tmp-String-5}"
+                    }                
+                }                
             }       
         }       
     }

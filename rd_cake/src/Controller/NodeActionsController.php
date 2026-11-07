@@ -45,8 +45,8 @@ class NodeActionsController extends AppController {
         $this->loadComponent('Aa');
         $this->loadComponent('GridButtonsFlat');  
         $this->loadComponent('JsonErrors'); 
-        $this->loadComponent('TimeCalculations'); 
-         $this->Authentication->allowUnauthenticated(['getActionsFor', 'replyToAction','nodeCommand','nodeReply']); 
+        $this->loadComponent('TimeCalculations');      
+        $this->Authentication->allowUnauthenticated(['getActionsFor', 'replyToAction','nodeCommand','nodeReply']); 
     }
 
     public function index(){
@@ -63,6 +63,26 @@ class NodeActionsController extends AppController {
         if(isset($req_q['node_id'])){
             $query->where(["NodeActions.node_id" => $req_q['node_id']]);
         }
+        
+        $default_column = 'created';
+        $sort   = 'NodeActions.'.$default_column;
+        $dir    = 'ASC';
+        
+        if(isset($req_q['sort'])){        
+		    $sort_array = json_decode($req_q['sort']);
+		    if(is_array($sort_array)){
+		    	if(isset($sort_array[0])){
+					$first_item = $sort_array[0];
+					$sort 	= $first_item->property;
+					$dir	= $first_item->direction;
+				}      
+		    }else{
+			    $sort = 'NodeActions.'.$req_q['sort'];		    			    				    
+			    $dir  = isset($req_q['dir']) ? $req_q['dir'] : $dir;	    				
+			}
+		}
+           
+        $query->orderBy([$sort => $dir]);
 
         //===== PAGING (MUST BE LAST) ======
         $limit = 50;   //Defaults
@@ -77,13 +97,15 @@ class NodeActionsController extends AppController {
         $query->page($page);
         $query->limit($limit);
         $query->offset($offset);
+        
+        
 
         $total = $query->count();
         $q_r = $query->all();
         $items = array();
 
         foreach ($q_r as $i) {
-            $row        = array();
+            $row        = [];
             $fields     = $this->{$this->main_model}->getSchema()->columns();
             foreach($fields as $field){
                 $row["$field"]= $i->{"$field"};

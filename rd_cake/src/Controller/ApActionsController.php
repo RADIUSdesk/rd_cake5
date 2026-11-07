@@ -68,6 +68,26 @@ class ApActionsController extends AppController {
         if(isset($req_q['ap_id'])){
             $query->where(["ApActions.ap_id" => $req_q['ap_id']]);
         }
+        
+        $default_column = 'created';
+        $sort   = 'ApActions.'.$default_column;
+        $dir    = 'ASC';
+        
+        if(isset($req_q['sort'])){        
+		    $sort_array = json_decode($req_q['sort']);
+		    if(is_array($sort_array)){
+		    	if(isset($sort_array[0])){
+					$first_item = $sort_array[0];
+					$sort 	= $first_item->property;
+					$dir	= $first_item->direction;
+				}      
+		    }else{
+			    $sort = 'ApActions.'.$req_q['sort'];		    			    				    
+			    $dir  = isset($req_q['dir']) ? $req_q['dir'] : $dir;	    				
+			}
+		}
+           
+        $query->orderBy([$sort => $dir]);
 
         //===== PAGING (MUST BE LAST) ======
         $limit = 50;   //Defaults
